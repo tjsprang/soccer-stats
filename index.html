@@ -1,0 +1,2848 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Soccer Stats</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #ffffff; --text: #16181d; --muted: #6b7280;
+    --line: #e3e5ea; --accent: #0f766e; --accent-text: #ffffff;
+    --good: #16a34a; --bad: #dc2626; --d: #2563eb;
+    --side-dark: #ea580c; --side-light: #a1a1aa;   /* practice scrimmage sides: bibs and shirts */
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --card: #1a1d24; --text: #eef0f4; --muted: #9aa1ad;
+      --line: #2a2f39; --accent: #0d9488;
+      --side-dark: #fb923c; --side-light: #e4e4e7;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  header {
+    position: sticky; top: 0; z-index: 5; background: var(--card);
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+  }
+  header .logo { font-weight: 800; margin-right: auto; color: var(--text); padding: 6px 0; }
+  header .logo span { color: var(--accent); }
+  #modeTag { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; margin-left: 4px; }
+  body.player .admin-only { display: none; }
+  body.no-nav header a[data-nav] { display: none; }
+  header a { color: var(--muted); text-decoration: none; font-weight: 600; padding: 6px 10px; border-radius: 8px; }
+  header a.on { color: var(--text); background: var(--bg); }
+  main { max-width: 720px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 22px; margin: 4px 0 14px; }
+  h2 { font-size: 17px; margin: 22px 0 10px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row > * { flex: 1; min-width: 0; }
+  .row > .small { flex: 0 0 auto; }
+  button, .btn {
+    font: inherit; font-weight: 700; border: 0; border-radius: 12px; padding: 12px 14px;
+    background: var(--bg); color: var(--text); cursor: pointer; text-decoration: none;
+    display: inline-block; text-align: center; border: 1px solid var(--line);
+  }
+  button.primary, .btn.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+  button.danger { color: var(--bad); }
+  .danger-zone { border: 1px solid color-mix(in srgb, var(--bad) 45%, var(--line)); }
+  .danger-zone .row > span { flex: 1; }
+  button.small, .btn.small { padding: 6px 10px; font-size: 14px; border-radius: 8px; white-space: nowrap; }
+  button:active { transform: scale(0.97); }
+  select, input {
+    font: inherit; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); width: 100%;
+  }
+  input[type=color] { padding: 2px; height: 46px; width: 56px; flex: 0 0 56px; }
+  .game-link { display: flex; justify-content: space-between; align-items: center; color: inherit; text-decoration: none; }
+  .badge { font-size: 12px; font-weight: 800; padding: 3px 8px; border-radius: 99px; background: var(--line); }
+  .badge.live { background: var(--bad); color: #fff; }
+  /* The faint ring keeps white (or black) kits visible on a matching background. */
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 25%, transparent); }
+
+  /* Scoreboard */
+  .scoreboard { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; text-align: center; padding: 14px 8px; }
+  .scoreboard .team { font-weight: 700; font-size: 15px; }
+  .scoreboard .nums { font-size: 40px; font-weight: 900; letter-spacing: 2px; font-variant-numeric: tabular-nums; }
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .tabs button { border-width: 2px; }
+  .tabs button.on { color: #fff; }
+  /* Team tabs: tinted with the team's colour (text stays readable for white or yellow kits). */
+  .tabs button.team-tab { border-color: color-mix(in srgb, var(--c) 60%, var(--line)); color: var(--muted); font-weight: 600; }
+  .tabs button.team-tab.on { background: color-mix(in srgb, var(--c) 30%, var(--card)); color: var(--text); font-weight: 800;
+    border-color: var(--text); box-shadow: inset 0 -5px 0 var(--c); }
+  .players { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .player {
+    text-align: left; padding: 14px 12px; min-height: 72px; background: var(--card);
+    /* A two-tone stripe for two-colour teams: the border is colour 1, an inset shadow colour 2. */
+    border-left: 3px solid var(--team, var(--accent));
+    box-shadow: inset 3px 0 0 var(--team2, var(--team, var(--accent)));
+  }
+  .player .num { color: var(--muted); font-weight: 800; margin-right: 4px; }
+  .player .line { display: block; font-weight: 500; font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .log { list-style: none; padding: 0; margin: 0; }
+  .log li { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; display: flex; gap: 8px; }
+  .log li:last-child { border-bottom: 0; }
+  .log .time { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 44px; }
+  .tag { font-weight: 800; }
+  .tag.goal { color: var(--good); }
+  .tag.own_goal, .tag.red { color: var(--bad); }
+  .tag.yellow { color: #b88400; }
+  .tag.kickoff, .tag.half, .tag.full, .tag.shootout { color: var(--accent); }
+  .tag.shot, .tag.corner, .tag.foul, .tag.offside, .tag.sub, .tag.gk { color: var(--muted); }
+
+  /* Bottom sheet */
+  #sheet { display: none; }
+  #sheet.open { display: block; }
+  .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 10; }
+  .panel {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 11; background: var(--card);
+    border-radius: 18px 18px 0 0; padding: 18px 16px 24px; max-height: 80vh; overflow-y: auto;
+    max-width: 720px; margin: 0 auto;
+  }
+  .panel h3 { margin: 0 0 14px; font-size: 18px; }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .actions button { padding: 18px 10px; font-size: 17px; }
+  .actions .goal { background: var(--good); color: #fff; border: 0; }
+  .actions .d { background: var(--d); color: #fff; border: 0; }
+  .actions .to { background: var(--bad); color: #fff; border: 0; }
+  .actions .full { grid-column: 1 / -1; }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 8px 6px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th:first-child, td:first-child, th.l, td.l { text-align: left; }
+  th { color: var(--muted); font-size: 12px; text-transform: uppercase; cursor: pointer; user-select: none; }
+  th.sorted { color: var(--accent); }
+  .roster li { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .roster { list-style: none; padding: 0; margin: 0 0 10px; }
+
+  /* Sign in */
+  body.signed-out header a[data-nav], body.signed-out #modeTag { display: none; }
+
+  /* Main menu */
+  .menu { display: grid; gap: 14px; margin-top: 10px; }
+  .menu a {
+    display: flex; gap: 16px; align-items: center; padding: 22px 18px; color: inherit; text-decoration: none;
+    border-left: 6px solid var(--accent);
+  }
+  .menu a:active { transform: scale(0.98); }
+  .menu .icon { font-size: 36px; }
+  .menu b { font-size: 20px; display: block; margin-bottom: 2px; }
+  .auth { max-width: 380px; margin: 40px auto 0; padding: 22px; }
+  .auth form { display: grid; gap: 10px; margin-bottom: 10px; }
+  .auth .links { display: flex; justify-content: space-between; margin-top: 14px; font-size: 14px; }
+  .auth .links a { color: var(--accent); cursor: pointer; font-weight: 600; }
+  .msg { font-size: 14px; min-height: 20px; }
+  .msg.error { color: var(--bad); }
+  code { background: var(--bg); padding: 1px 5px; border-radius: 5px; }
+
+  /* League border editor */
+  .presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 8px; }
+  .preset { height: 38px; padding: 0; border-radius: 10px; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .swatch { display: inline-flex; gap: 4px; align-items: center; }
+  .swatch input[type=color] { width: 52px; height: 40px; padding: 2px; }
+  .badge.scheduled { background: var(--d); color: #fff; }
+
+  /* Schedule creator */
+  .options { display: grid; gap: 10px; }
+  .option { display: flex; gap: 12px; align-items: flex-start; padding: 14px; cursor: pointer; margin: 0; }
+  .option input { width: auto; margin-top: 3px; accent-color: var(--accent); }
+  .option:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .field { display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .round h3 { font-size: 15px; margin: 0 0 8px; display: flex; justify-content: space-between; }
+  .match { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .match:last-child { border-bottom: 0; }
+
+  /* Lineup */
+  .lineup-bar { margin-bottom: 10px; }
+  .players.bench .player { opacity: .6; min-height: 56px; }
+  .actions .divider { font-size: 13px; margin-top: 6px; }
+  .actions button.in { background: var(--good); color: #fff; border-color: transparent; }
+
+  /* Player claims and profiles */
+  .claim-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px;
+    padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .claim-row:last-child { border-bottom: 0; padding-bottom: 0; }
+  .badge.you { background: var(--good); color: #fff; }
+  .claimed { font-size: 12px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; text-align: center; }
+  .stat-grid b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
+  .stat-grid span { font-size: 12px; }
+  tr.me td { background: color-mix(in srgb, var(--good) 15%, transparent); }
+  .scoreboard.live-board { position: relative; }
+  .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); margin-right: 6px;
+    animation: pulse 1.4s ease-in-out infinite; vertical-align: middle; }
+  @keyframes pulse { 50% { opacity: .3; } }
+
+  /* Chart colours: the first slots of a colourblind-validated palette, with their own dark-mode steps */
+  :root { --series-1: #2a78d6; --series-2: #eb6834; --grid: #e1e0d9; --axis: #c3c2b7; --ink-muted: #898781; }
+  @media (prefers-color-scheme: dark) {
+    :root { --series-1: #3987e5; --series-2: #d95926; --grid: #2c2c2a; --axis: #383835; }
+  }
+
+  /* Match tracker */
+  .phase-head { font-size: 18px; font-weight: 800; margin: 4px 0 10px; }
+  .play-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0 4px; }
+  .play-actions button { padding: 16px 10px; font-size: 16px; }
+  .play-actions .goal { background: var(--good); color: #fff; border: 0; }
+  .players .player:disabled { opacity: .35; }
+  .lineup-bar .muted { line-height: 1.6; }
+
+  /* Box score: scorers under the score, and the two-team stat comparison */
+  .scorers { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; font-size: 13px; color: var(--muted); margin: 6px 0 4px; }
+  .scorers > div:last-child { text-align: right; }
+  .compare-head { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; margin: 6px 0 4px; }
+  .compare-row { display: grid; grid-template-columns: 36px 1fr 36px; align-items: center; row-gap: 4px; padding: 6px 0; font-variant-numeric: tabular-nums; }
+  .compare-row b:last-of-type { text-align: right; }
+  .compare-label { text-align: center; font-size: 13px; color: var(--muted); }
+  .compare-track { grid-column: 1 / -1; display: flex; gap: 2px; height: 6px; }
+  .compare-track i { display: block; height: 100%; border-radius: 3px; }
+  .compare-track .s1 { background: var(--series-1); } .compare-track .s2 { background: var(--series-2); }
+
+  /* Stat categories, tiles and game pages */
+  .cat-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin: 4px 0 10px; }
+  .cat-tabs button { flex: 0 0 auto; padding: 7px 12px; font-size: 14px; border-radius: 99px; white-space: nowrap; }
+  .cat-tabs button.on { background: var(--text); color: var(--bg); border-color: transparent; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+  .tile-label { font-size: 13px; color: var(--muted); }
+  .tile b { font-size: 26px; font-weight: 700; }
+  .tile-note { font-size: 12px; color: var(--muted); }
+  .leaders-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .leaders-list div { display: flex; flex-direction: column; font-size: 14px; }
+  .point-row { padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .point-row:last-child { border-bottom: 0; }
+  .point-head { display: flex; gap: 8px; align-items: center; margin-bottom: 2px; }
+  .point-head b { flex: 1; }
+  .on-field { font-size: 12px; margin-top: 4px; }
+  .foot { font-size: 12px; }
+  th[title] { text-decoration: underline dotted; text-underline-offset: 3px; }
+
+  /* Charts */
+  .chart { overflow: hidden; }
+  .chart svg { display: block; margin-top: 8px; overflow: visible; }
+  .chart-title { font-weight: 700; margin-bottom: 4px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .swatch.series-1 { background: var(--series-1); } .swatch.series-2 { background: var(--series-2); }
+  .chart .grid { stroke: var(--grid); stroke-width: 1; }
+  .chart .axis { stroke: var(--axis); stroke-width: 1; }
+  .chart .guide { stroke: var(--axis); stroke-width: 1; }
+  .chart .tick { fill: var(--ink-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .chart .end-label, .chart .node-label { fill: var(--text); font-size: 12px; font-weight: 600; }
+  .chart .in-label { fill: #fff; font-size: 12px; font-weight: 700; pointer-events: none; }
+  .chart .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .chart .line.series-1 { stroke: var(--series-1); } .chart .line.series-2 { stroke: var(--series-2); }
+  .chart .dot { stroke: var(--card); stroke-width: 2; }
+  .chart .dot.series-1, .chart .bar.series-1, .chart .node { fill: var(--series-1); }
+  .chart .dot.series-2, .chart .bar.series-2 { fill: var(--series-2); }
+  .chart .hit { fill: transparent; cursor: pointer; outline: none; }
+  .chart .flow { fill: none; stroke: var(--ink-muted); stroke-opacity: .28; cursor: pointer; outline: none; }
+  .chart .flow.lit { stroke: var(--series-1); stroke-opacity: .6; }
+  .chart .node { cursor: pointer; outline: none; }
+  /* Keyboard focus on a mark shows its tooltip (and guide line) rather than an outline that could be mistaken for data. */
+  #chart-tip { position: fixed; z-index: 30; display: none; pointer-events: none; white-space: pre-line;
+    background: var(--text); color: var(--bg); font-size: 13px; padding: 7px 10px; border-radius: 8px; max-width: 260px; }
+  #chart-tip.show { display: block; }
+  .table-twin { margin-top: 8px; font-size: 13px; }
+  .table-twin summary { color: var(--muted); cursor: pointer; }
+  .hbar { display: grid; grid-template-columns: minmax(70px, 30%) 1fr 28px; gap: 8px; align-items: center; font-size: 14px; padding: 4px 0; }
+  .hbar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hbar-track { height: 12px; }
+  .hbar-track i { display: block; height: 100%; min-width: 4px; background: var(--series-1); border-radius: 0 4px 4px 0; }
+  .hbar-val { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* Header: four tabs and the bell have to fit on a phone */
+  header { gap: 2px; padding: 8px 10px; }
+  header a[data-nav] { padding: 6px 7px; font-size: 14px; }
+  .bell { position: relative; border: 0; background: none; padding: 6px 4px 6px 8px; font-size: 17px; }
+  #bell-count { position: absolute; top: 0; right: -4px; background: var(--bad); color: #fff; font-size: 10px; font-weight: 800;
+    border-radius: 99px; padding: 1px 5px; line-height: 1.4; }
+  body.signed-out .bell { display: none; }
+  @media (max-width: 380px) { header .logo span, #modeTag { display: none; } }
+
+  /* Public links, photos and bios, availability, export */
+  body.signed-out.public header a[data-nav] { display: inline; }
+  .public-banner { font-size: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: space-between; }
+  .avatar { border-radius: 50%; object-fit: cover; flex: 0 0 auto; display: inline-grid; place-items: center;
+    color: #fff; font-weight: 800; vertical-align: middle; }
+  .roster-name { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
+  .profile-head { display: flex; gap: 14px; align-items: center; margin: 4px 0 10px; }
+  .bio { margin: 0 0 12px; white-space: pre-line; }
+  textarea { font: inherit; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); width: 100%; resize: vertical; }
+  .avail-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-top: 10px;
+    padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; }
+  .avail-buttons { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+  .avail-buttons .muted { margin-right: 2px; }
+  button.on-yes { background: var(--good); color: #fff; border-color: transparent; }
+  button.on-maybe { background: #eda100; color: #1a1a19; border-color: transparent; }
+  button.on-no { background: var(--bad); color: #fff; border-color: transparent; }
+  .avail-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; flex-wrap: wrap; }
+  .panel h4 { margin: 14px 0 4px; }
+  .actions.lineup button.out:not(.in) { opacity: .45; }
+  .export-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+  .export-buttons > span { width: 100%; font-size: 13px; }
+  .export-row { margin: 8px 0 12px; }
+
+  /* Game clock, timeouts, wind, and line presets */
+  .clock { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .clock .cap-hit { color: var(--bad); font-weight: 800; }
+  .game-extras { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-size: 13px; margin: -4px 2px 10px; }
+  .line-presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+  .actions.lineup button { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .streak { font-size: 11px; font-weight: 600; opacity: .8; }
+  .actions.lineup button.tired:not(.in) { border-color: #eda100; }
+  .actions.lineup button.tired.in { box-shadow: inset 0 0 0 2px #eda100; }
+  .tired-key { display: block; font-size: 12px; margin-top: 2px; }
+
+  /* Schedule creator: game days and time slots */
+  .weekday-picker { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+  .weekday-picker button { padding: 7px 9px; font-size: 13px; border-radius: 8px; }
+  .weekday-picker button.on, .cat-tabs button.on { background: var(--text); color: var(--bg); border-color: transparent; }
+  .slot-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .slot-chip { display: inline-flex; align-items: center; gap: 2px; background: var(--bg); border: 1px solid var(--line);
+    border-radius: 99px; padding: 4px 6px 4px 10px; font-size: 14px; color: var(--text); font-weight: 600; }
+
+  /* Two-colour teams */
+  .color2-toggle { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; color: var(--muted); cursor: pointer; }
+  .color2-toggle input { width: auto; }
+  .big-dot { width: 18px; height: 18px; margin: 0; }
+
+  /* Team admins */
+  .team-admins { font-size: 12px; margin: -2px 0 6px; }
+  .link-btn { border: 0; background: none; padding: 0 2px; color: var(--muted); font-size: 12px; cursor: pointer; }
+
+  /* End-of-season card on the Games page */
+  .season-card { border: 2px solid var(--accent); }
+  .season-card.champion-card { border-color: #eda100; }
+  .season-card-title { font-size: 17px; font-weight: 800; margin-bottom: 4px; }
+  .season-card .row { flex-wrap: wrap; gap: 8px; }
+  .season-card .row > * { flex: 0 0 auto; }
+  .season-over { text-align: center; font-size: 13px; margin-top: 20px; }
+  .season-over a { color: var(--accent); }
+
+  /* Standings */
+  table.standings td:nth-child(2) { white-space: nowrap; }
+  .form { display: inline-flex; gap: 3px; }
+  .form a { width: 18px; height: 18px; border-radius: 4px; font-size: 11px; font-weight: 800; display: inline-grid; place-items: center;
+    text-decoration: none; color: #fff; }
+  .form-W { background: var(--good); } .form-L { background: var(--bad); } .form-D { background: var(--muted); }
+
+  /* Playoff bracket */
+  .bracket { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 8px; align-items: stretch; }
+  .bround { flex: 0 0 200px; display: flex; flex-direction: column; justify-content: space-around; gap: 12px; }
+  .bround-name { font-size: 12px; font-weight: 800; text-transform: uppercase; color: var(--muted); }
+  .bmatch { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .bmatch a { color: inherit; text-decoration: none; display: block; }
+  .bmatch.bye { opacity: .6; }
+  .bteam { display: flex; align-items: center; gap: 4px; padding: 8px 10px; font-size: 14px; border-bottom: 1px solid var(--line); }
+  .bteam b { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .bteam.won { font-weight: 800; }
+  .seed { font-size: 11px; color: var(--muted); width: 16px; }
+  .bfoot { display: flex; justify-content: flex-end; gap: 6px; padding: 4px 8px; min-height: 8px; }
+  .bfoot:empty { padding: 0; }
+  .champion { font-size: 18px; border: 2px solid #eda100; text-align: center; }
+  .seed-list { margin: 8px 0 14px; padding-left: 22px; }
+  .seed-list li { padding: 3px 0; }
+
+  /* Notifications and installing */
+  .notes { display: grid; gap: 2px; max-height: 55vh; overflow-y: auto; }
+  .note { display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 10px; color: inherit; text-decoration: none; font-size: 14px; }
+  .note.unread { background: color-mix(in srgb, var(--accent) 12%, transparent); font-weight: 600; }
+  .note .muted { font-size: 12px; font-weight: 400; }
+  .install { width: 100%; text-align: left; font-weight: 400; margin-top: 14px; }
+
+  /* Seasons and the Hall of Fame */
+  .season-picker { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; }
+  .season-picker select { width: auto; flex: 1; max-width: 320px; padding: 8px 10px; }
+  .past-season { border: 2px dashed var(--line); font-size: 14px; }
+  .past-season a { color: var(--accent); display: block; margin-top: 4px; }
+  .suggest { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .suggest > div { width: 100%; }
+  .suggest button { text-align: left; white-space: normal; }
+  .option-btn { text-align: left; display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 14px; font-weight: 400; }
+  .option-btn b { font-size: 16px; }
+  .option-btn:disabled { opacity: .5; }
+  .hof-card .hof-trophy { font-size: 28px; flex: 0 0 auto; }
+  .hof-note { margin: 10px 0 0; font-style: italic; }
+  .hof-stats { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .hof-stats span { display: flex; flex-direction: column; }
+  .hof-stats b { font-size: 18px; color: var(--text); }
+  .hof-banner { display: block; color: inherit; text-decoration: none; font-weight: 700; border: 2px solid #eda100; }
+
+  /* Leaders: All / Teams */
+  .leader-tabs button.on { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+  /* Practice scrimmages: choosing sides */
+  .side-summary { gap: 14px; margin: 10px 0 4px; flex-wrap: wrap; }
+  .side-summary button { margin-left: auto; }
+  .side-list { max-height: 50vh; overflow-y: auto; }
+  .side-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .side-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .side-pick { display: flex; gap: 4px; flex: 0 0 auto; }
+  .side-pick button { padding: 6px 10px; font-size: 13px; }
+  .side-pick button.on.dark { background: var(--side-dark); color: var(--card); border-color: transparent; }
+  .side-pick button.on.light { background: var(--side-light); color: #111; border-color: transparent; }
+  .side-pick button.on.out { background: var(--line); }
+  .side-pick button.on { font-weight: 800; box-shadow: 0 0 0 2px var(--accent); }
+  .practice-label { font-size: 13px; margin-bottom: 8px; }
+  .team-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .team-chips button { padding: 8px 12px; font-size: 14px; border-radius: 99px; white-space: nowrap; }
+  .team-chips button.on { border: 2px solid var(--c); background: color-mix(in srgb, var(--c) 18%, var(--card)); }
+
+  /* Offline banner and messages */
+  .pill {
+    position: fixed; left: 50%; transform: translateX(-50%); z-index: 20; display: none;
+    max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 99px;
+    font-size: 14px; font-weight: 700; text-align: center; box-shadow: 0 4px 16px rgba(0,0,0,.25);
+  }
+  .pill.show { display: block; }
+  #sync { top: 64px; background: var(--bad); color: #fff; }
+  #toast { bottom: 20px; background: var(--text); color: var(--bg); }
+
+  /* Settings */
+  .stepper { display: flex; align-items: center; gap: 18px; margin-top: 12px; }
+  .stepper b { font-size: 32px; min-width: 40px; text-align: center; font-variant-numeric: tabular-nums; }
+  .stepper button { width: 52px; height: 52px; font-size: 24px; padding: 0; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="stats.js"></script>
+<script src="league.js"></script>
+<script src="extras.js"></script>
+<script src="teamadmin.js"></script>
+<script src="practice.js"></script>
+<script src="match.js"></script>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0f1115">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Soccer Stats">
+</head>
+<body>
+<header>
+  <a class="logo" href="#/">⚽ Soccer<span>Stats</span> <small id="modeTag"></small></a>
+  <a href="#/games" data-nav="games">Games</a>
+  <a href="#/standings" data-nav="standings">Standings</a>
+  <a href="#/leaders" data-nav="leaders">Leaders</a>
+  <a href="#/teams" data-nav="teams">Teams</a>
+  <button class="bell" onclick="openNotes()" aria-label="Notifications">🔔<span id="bell-count" style="display:none"></span></button>
+</header>
+<main id="app"></main>
+<div id="sheet"></div>
+<div id="sync" class="pill" role="status"></div>
+<div id="toast" class="pill" role="alert"></div>
+
+<script>
+// ---------- Supabase (accounts) ----------
+// Paste these from your Supabase project: Project Settings → API.
+// The anon/publishable key is designed to be public, so it's fine in this file.
+const SUPABASE_URL = 'https://rjpqplseazvxzakakngh.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_gAzJjWvSQmVd4tmyxYLwxg_9GirzS_0';
+
+const sb = SUPABASE_URL && SUPABASE_KEY && window.supabase
+  ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) // keeps the session in localStorage and auto-refreshes it
+  : null;
+let session = null, authReady = false, recovering = false, authMode = 'signin';
+
+// The league the user is in, and which side they entered it from: 'player' (view only) or 'admin'.
+let mode = null, league = null;
+try {
+  mode = localStorage.getItem('soccer-mode');
+  league = JSON.parse(localStorage.getItem('soccer-league'));
+  // Viewing a league from a public link (this tab only).
+  const pub = JSON.parse(sessionStorage.getItem('soccer-public'));
+  if (pub) { league = pub; mode = 'public'; }
+} catch {}
+const isAdmin = () => mode === 'admin';
+
+// ---------- Data ----------
+// A league's teams, games and plays live in Supabase and are loaded into `db`, which the screens read.
+// Changes update `db` straight away (so taps feel instant) and are saved to Supabase in the background,
+// in order, retrying while offline. Other people's changes arrive live through Supabase Realtime.
+const uid = () => crypto.randomUUID();
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function seed() {
+  // Squads numbered 1 (the keeper) upward.
+  const mk = (name, color, names) => ({
+    id: uid(), name, color,
+    players: names.map((n, i) => ({ id: uid(), name: n, number: String(i + 1) }))
+  });
+  return {
+    teams: [
+      mk('Real Ale Madrid', '#f5f5f4', ['Alex', 'Jordan', 'Sam', 'Riley', 'Casey', 'Morgan', 'Taylor', 'Jamie', 'Robin', 'Ellis', 'Frankie', 'Jules', 'Kit', 'Lane']),
+      mk('Inter Yermilan', '#1d4ed8', ['Avery', 'Quinn', 'Reese', 'Drew', 'Parker', 'Rowan', 'Skyler', 'Emerson', 'Arden', 'Bailey', 'Cameron', 'Devon', 'Eden', 'Fallon']),
+      mk('Borussia Teeth', '#facc15', ['Hayden', 'Kai', 'Logan', 'Blake', 'Charlie', 'Dakota', 'Finley', 'Harper', 'Indy', 'Jessie', 'Kerry', 'Lou', 'Marlow', 'Noel']),
+      mk('Nottingham Forehead', '#b91c1c', ['Jesse', 'Kendall', 'Micah', 'Nico', 'Peyton', 'Sage', 'Toby', 'Wren', 'Ashton', 'Brooke', 'Corey', 'Dale', 'Emery', 'Glenn'])
+    ],
+    games: []
+  };
+}
+
+const emptyDb = () => ({ teams: [], games: [], settings: { onField: 11 }, claims: [], claimsReady: false, passReady: false,
+  seasonsReady: false, seasons: [], hof: [], profiles: {}, avail: [], practice: [] });
+let db = emptyDb();
+let dataLeagueId = null;   // which league `db` currently holds
+let loading = null, loadError = null, channel = null;
+
+function rememberLeague() {
+  // A league opened from a public link is remembered for this tab only, so it doesn't replace your own league.
+  try {
+    if (mode === 'public') sessionStorage.setItem('soccer-public', JSON.stringify(league));
+    else localStorage.setItem('soccer-league', JSON.stringify(league));
+  } catch {}
+}
+
+// Supabase rows ⇄ the shapes the screens use.
+const toGame = r => ({
+  id: r.id, homeId: r.home_id, awayId: r.away_id, status: r.status, created: Number(r.created_ms),
+  when: r.scheduled_at, field: r.field, round: r.round, lineup: r.lineup, seasonId: r.season_id || null,
+  stage: r.stage || 'regular', bracketSlot: r.bracket_slot || null,
+  practiceTeam: r.practice_team || null, sides: r.sides || null, events: []
+});
+const toEvent = r => ({
+  id: r.id, t: Number(r.t), type: r.type, teamId: r.team_id, playerId: r.player_id,
+  ...(r.assist_id ? { assistId: r.assist_id } : {}), ...(r.target_id ? { targetId: r.target_id } : {}),
+  ...(r.played ? { played: r.played } : {}), ...(r.detail ? { detail: r.detail } : {})
+});
+// Season columns only exist once supabase/006 has been run.
+const seasonCols = x => (db.seasonsReady ? { season_id: x.seasonId || activeSeason()?.id } : {});
+const teamRow = t => ({ id: t.id, league_id: league.id, name: t.name, color: t.color, ...seasonCols(t),
+  ...(db.color2Ready ? { color2: t.color2 || null } : {}) });   // column added by 013
+const playerRows = t => t.players.map((p, i) => ({
+  id: p.id, league_id: league.id, team_id: t.id, name: p.name, number: String(p.number ?? ''), sort: i,
+  ...(db.seasonsReady ? { season_id: t.seasonId || activeSeason()?.id, person_id: p.personId || p.id } : {}),
+  // A player linked to someone from a past season keeps their claimed account.
+  ...(p.carryUser && p.userId ? { user_id: p.userId } : {})
+}));
+const gameRow = g => ({
+  id: g.id, league_id: league.id, home_id: g.homeId, away_id: g.awayId, status: g.status, created_ms: g.created,
+  scheduled_at: g.when || null, field: g.field ?? null, round: g.round ?? null,
+  lineup: g.lineup || null, ...seasonCols(g),   // lineup: the planned { teamId: { on: [playerIds], gk: playerId } }
+  ...(db.playoffsReady ? { stage: g.stage || 'regular', bracket_slot: g.bracketSlot || null } : {}),   // columns added by 008
+  ...(db.practiceReady ? { practice_team: g.practiceTeam || null, sides: g.sides || null } : {})        // columns added by 016
+});
+const eventRow = (g, e) => ({
+  id: e.id, league_id: league.id, game_id: g.id, t: e.t, type: e.type, team_id: e.teamId || null,
+  player_id: e.playerId || null, assist_id: e.assistId || null, played: e.played || null,
+  ...(db.passReady ? { target_id: e.targetId || null, detail: e.detail || null } : {})
+});
+
+// All of a league's rows from one table. Supabase returns at most 1000 rows per request,
+// so fetch the first page (with a total count), then the rest in parallel.
+async function fetchAll(table, leagueId, orders, { select = '*', filter = q => q } = {}) {
+  const query = () => orders.reduce((q, o) => q.order(o), filter(sb.from(table).select(select, { count: 'exact' }).eq('league_id', leagueId)));
+  const first = await query().range(0, 999);
+  if (first.error) throw first.error;
+  const pages = Math.ceil((first.count || 0) / 1000);
+  const rest = await Promise.all(Array.from({ length: Math.max(0, pages - 1) }, (_, i) => query().range((i + 1) * 1000, (i + 2) * 1000 - 1)));
+  for (const r of rest) if (r.error) throw r.error;
+  return [first, ...rest].flatMap(r => r.data);
+}
+
+// Games and plays for some seasons (or every season, when `seasonIds` is null).
+// Plays don't store their season, so they're filtered through their game.
+function fetchGamesAndPlays(id, seasonIds) {
+  return Promise.all([
+    fetchAll('games', id, ['id'], { filter: q => (seasonIds ? q.in('season_id', seasonIds) : q) }),
+    fetchAll('events', id, ['seq'], seasonIds ? { select: '*, games!inner(season_id)', filter: q => q.in('games.season_id', seasonIds) } : {})
+  ]);
+}
+
+// Loads a league. Teams and rosters come for every season (they're small, and all-time features need them),
+// but games and plays only for the current season plus any past seasons already opened (`alsoSeasons`);
+// other past seasons load when first needed (see loadSeasons).
+async function fetchLeague(id, alsoSeasons = []) {
+  const seasons = await sb.from('seasons').select('*').eq('league_id', id).order('number');   // fails until supabase/006
+  const active = seasons.data?.find(s => s.status === 'active');
+  const loadIds = !seasons.error && active ? [...new Set([active.id, ...alsoSeasons])] : null;   // null = everything
+  const [lg, teams, players, [games, events], passProbe, hof, playoffProbe, profiles, avail, teamAdmins, teamRequests, color2Probe, practiceProbe] = await Promise.all([
+    sb.from('leagues').select('*').eq('id', id).single()   // '*' so columns added by later updates are optional
+      .then(r => { if (r.error) throw r.error; return r.data; }),
+    fetchAll('teams', id, ['created_at', 'id']),
+    fetchAll('players', id, ['sort', 'id']),
+    fetchGamesAndPlays(id, loadIds),
+    sb.from('games').select('first_pull').limit(1),   // fails until supabase/005 has been run
+    sb.from('hall_of_fame').select('*').eq('league_id', id).order('inducted_at'),   // fails until supabase/006
+    sb.from('games').select('stage').limit(1),   // fails until supabase/008 has been run
+    sb.from('person_profiles').select('*').eq('league_id', id),   // these two fail until supabase/010
+    sb.from('availability').select('*').eq('league_id', id),
+    sb.from('team_admins').select('*').eq('league_id', id),   // these two fail until supabase/012
+    sb.from('team_requests').select('*').eq('league_id', id).order('created_at'),
+    sb.from('teams').select('color2').limit(1),   // fails until supabase/013 has been run
+    sb.from('games').select('practice_team').limit(1)   // fails until supabase/016 has been run
+  ]);
+  const claims = await fetchClaims(id);
+  const next = {
+    teams: teams.map(t => ({ id: t.id, name: t.name, color: t.color, color2: t.color2 || null, seasonId: t.season_id, players: [] })),
+    color2Ready: !color2Probe.error,   // false until supabase/013_team_colors.sql has been run
+    // Practice scrimmages are kept apart from league games, so they never reach standings or league stats.
+    games: games.filter(r => r.stage !== 'practice').map(toGame),
+    practice: games.filter(r => r.stage === 'practice').map(toGame),
+    practiceReady: !practiceProbe.error,   // false until supabase/016_practice.sql has been run
+    settings: { onField: lg.on_field, timeCap: lg.time_cap ?? null, minRoster: lg.min_roster ?? 0 },
+    minRosterReady: 'min_roster' in lg,   // false until supabase/015_min_roster.sql has been run
+    createdBy: lg.created_by,
+    detailsReady: 'time_cap' in lg,   // false until supabase/009_game_details.sql has been run
+    publicReady: 'is_public' in lg,   // false until supabase/010 has been run (and the next two)
+    isPublic: !!lg.is_public,
+    profilesReady: !profiles.error,
+    profiles: Object.fromEntries((profiles.data || []).map(p => [p.person_id, p])),
+    availReady: !avail.error,
+    avail: avail.data || [],
+    teamAdminsReady: !teamAdmins.error,   // false until supabase/012_team_admins.sql has been run
+    teamAdmins: teamAdmins.data || [],
+    teamRequests: teamRequests.data || [],
+    claims: claims || [],
+    claimsReady: !!claims,           // false until supabase/004_player_claims.sql has been run
+    passReady: !passProbe.error,     // false until supabase/005_pass_by_pass.sql has been run
+    seasonsReady: !seasons.error,    // false until supabase/006_seasons.sql has been run
+    playoffsReady: !playoffProbe.error,   // false until supabase/008_playoffs.sql has been run
+    seasons: seasons.data || [],
+    loadedSeasons: loadIds || 'all',   // which seasons' games and plays are in `games`
+    hof: hof.data || []
+  };
+  for (const p of players) next.teams.find(t => t.id === p.team_id)?.players.push({
+    id: p.id, name: p.name, number: p.number, userId: p.user_id || null, personId: p.person_id || p.id
+  });
+  const byId = Object.fromEntries([...next.games, ...next.practice].map(g => [g.id, g]));
+  for (const e of events) byId[e.game_id]?.events.push(toEvent(e));
+  if (league?.id === id) { league.name = lg.name; league.border_colors = lg.border_colors; rememberLeague(); }
+  return next;
+}
+
+// Player claims you're allowed to see: your own, or all of them in leagues you run.
+// Returns null if the claims table doesn't exist yet.
+async function fetchClaims(id) {
+  const { data, error } = await sb.from('player_claims').select('*').eq('league_id', id).order('created_at');
+  return error ? null : data;
+}
+
+// ----- Seasons -----
+// db.teams and db.games hold every season; screens show the season being viewed (the active one by default).
+let viewSeasonId = null;
+const activeSeason = () => db.seasons.find(s => s.status === 'active') || null;
+const viewSeason = () => db.seasons.find(s => s.id === viewSeasonId) || activeSeason();
+const inViewSeason = x => !db.seasonsReady || x.seasonId === viewSeason()?.id;
+const inActiveSeason = x => !db.seasonsReady || x.seasonId === activeSeason()?.id;
+const seasonTeams = () => db.teams.filter(inViewSeason);
+const seasonGames = () => db.games.filter(inViewSeason);
+const viewingPast = () => db.seasonsReady && viewSeason()?.status === 'archived';
+const canEdit = () => isAdmin() && !viewingPast();   // past seasons are read-only
+const seasonName = id => db.seasons.find(s => s.id === id)?.name || '';
+
+// A dropdown to switch seasons (only once there's more than one). `extra` adds options such as "All time".
+function seasonPicker(onchange, extra = []) {
+  if (!db.seasonsReady || db.seasons.length < 2 && !extra.length) return '';
+  const current = viewingPast() || !extra.some(([v]) => v === viewSeasonId) ? viewSeason()?.id : viewSeasonId;
+  return `<label class="season-picker"><span class="muted">Season</span>
+    <select onchange="${onchange}(this.value)">
+      ${[...db.seasons].reverse().map(s => `<option value="${s.id}" ${s.id === current ? 'selected' : ''}>
+        ${esc(s.name)}${s.status === 'active' ? ' (current)' : ''}</option>`).join('')}
+      ${extra.map(([v, label, on]) => `<option value="${v}" ${on ? 'selected' : ''}>${esc(label)}</option>`).join('')}
+    </select></label>`;
+}
+function pickSeason(id) { viewSeasonId = id; editing = null; route(); }
+
+// ----- All-time identity -----
+// Each season has its own roster entry for a player; personId links them across seasons.
+const personOf = pid => allPlayers().find(p => p.id === pid)?.personId || pid;
+function personEntries(personId) {   // every season's roster entry for one person, oldest season first
+  const num = sid => db.seasons.find(s => s.id === sid)?.number || 0;
+  return allPlayers().filter(p => p.personId === personId).sort((a, b) => num(a.team.seasonId) - num(b.team.seasonId));
+}
+// Stats per person across every season.
+function allTimeStats() {
+  const an = analyze(db.games.filter(countsInSeason)), people = {};   // playoff games count only if their season says so
+  for (const [pid, s] of Object.entries(an.players)) {
+    const t = people[personOf(pid)] || (people[personOf(pid)] = ZERO());
+    for (const k of Object.keys(ZERO())) t[k] += s[k] || 0;
+  }
+  for (const s of Object.values(people)) finishPlayer(s);
+  return people;
+}
+
+// ----- Claimed players -----
+const me = () => session?.user.id;
+const allPlayers = () => db.teams.flatMap(t => t.players.map(p => ({ ...p, team: t })));
+// Your player this season (or your most recent one, before seasons exist).
+const myPlayer = () => allPlayers().filter(p => p.userId && p.userId === me())
+  .sort((a, b) => inActiveSeason(b.team) - inActiveSeason(a.team))[0];
+const myPendingClaim = () => db.claims.find(c => c.user_id === me() && c.status === 'pending');
+const pendingClaims = () => db.claims.filter(c => c.status === 'pending');
+const teamOf = pid => db.teams.find(t => t.players.some(p => p.id === pid));
+
+// First load of a league; route() shows "Loading…" until it's done.
+function loadLeague() {
+  const id = league.id;
+  if (!loading) loading = fetchLeague(id)
+    .then(next => {
+      if (league?.id !== id) return;
+      db = next; dataLeagueId = id; loadError = null; offlineData = null;
+      saveSnapshot(id, next);
+      subscribeLeague(id);
+    })
+    .catch(async err => {
+      // No signal: fall back to the copy saved on this device, if there is one.
+      const snap = !err.code && await loadSnapshot(id);
+      if (snap && league?.id === id) {
+        db = snap.data; dataLeagueId = id; loadError = null; offlineData = snap.at;
+        subscribeLeague(id);   // connects by itself once the signal is back
+      } else loadError = dbErrorText(err);
+    })
+    .finally(() => { loading = null; updateSyncBadge(); route(); });
+  return loading;
+}
+let offlineData = null;   // when set, the screens are showing the device's saved copy (from this time)
+
+// ----- Past seasons, loaded when first needed -----
+// Which seasons a page needs: all of them for all-time views, otherwise the one being looked at.
+function seasonsNeeded(page, id) {
+  if (!db.seasonsReady || db.loadedSeasons === 'all') return [];
+  const all = db.seasons.map(s => s.id);
+  const need = page === 'hof' || page === 'profile' || (page === 'leaders' && leaderScope === 'all')
+    || ((page === 'box' || page === 'game') && !game(id)) ? all
+    : page === 'team' || page === 'practice' ? [team(id)?.seasonId]
+    : [viewSeason()?.id];
+  return need.filter(s => s && !db.loadedSeasons.includes(s));
+}
+
+let seasonsLoading = null, seasonLoadFailed = false;
+function loadSeasons(ids) {
+  if (!seasonsLoading) seasonsLoading = fetchGamesAndPlays(league.id, ids)
+    .then(([games, events]) => {
+      const fresh = games.map(toGame), byId = Object.fromEntries(fresh.map(g => [g.id, g]));
+      for (const e of events) byId[e.game_id]?.events.push(toEvent(e));
+      db.games = [...db.games.filter(g => !ids.includes(g.seasonId)), ...fresh.filter(g => !isPractice(g))];
+      db.practice = [...db.practice.filter(g => !ids.includes(g.seasonId)), ...fresh.filter(isPractice)];
+      db.loadedSeasons = [...new Set([...db.loadedSeasons, ...ids])];
+      saveSnapshot(league.id, db);
+    })
+    .catch(() => { seasonLoadFailed = true; toast('Couldn’t load past seasons. Showing what’s loaded so far.'); })
+    .finally(() => { seasonsLoading = null; route(); });
+  return seasonsLoading;
+}
+
+// For actions (like exporting every season) that need all the data first.
+async function withAllSeasons(fn) {
+  const missing = db.seasonsReady && db.loadedSeasons !== 'all' ? db.seasons.map(s => s.id).filter(s => !db.loadedSeasons.includes(s)) : [];
+  if (missing.length) { toast('Loading past seasons…'); await loadSeasons(missing); }
+  fn();
+}
+window.addEventListener('online', () => { if (offlineData) refreshLeague(); });
+
+// Re-fetch everything (after someone else changes teams or settings, or after reconnecting).
+let refreshTimer, missedRemote = false;
+function refreshLeague() {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(async () => {
+    if (!league || dataLeagueId !== league.id) return;
+    if (writes.length) { missedRemote = true; return; } // try again once our own changes are saved
+    const id = league.id, seq = writeSeq;
+    try {
+      const next = await fetchLeague(id, Array.isArray(db.loadedSeasons) ? db.loadedSeasons : []);
+      if (league?.id !== id) return;
+      // A change made while this was loading may be missing from it: don't show stale data, load again.
+      if (writes.length || writeSeq !== seq) { missedRemote = true; if (!writes.length) refreshLeague(); return; }
+      db = next; offlineData = null; updateSyncBadge();
+      saveSnapshot(id, next);
+      rerender();
+    } catch {}
+  }, 400);
+}
+
+// ----- Saving: a queue of changes sent to Supabase one at a time, in order -----
+// Each change is a plain description (not code), so the queue can be kept on the device: if the page
+// closes or the phone dies before changes reach Supabase, they're sent the next time the app opens.
+//   { upsert: 'table', rows: [...] }         insert or update rows (safe to repeat)
+//   { del: 'table', vals: [...], col: 'id' } delete rows whose col is one of vals
+//   { rpc: 'function', args: {...} }         call a database function
+let writes = [];
+let flushing = false, offline = false;
+const queueKey = () => `soccer-queue:${session?.user.id}`;
+
+function saveQueue() {
+  try { localStorage.setItem(queueKey(), JSON.stringify(writes)); } catch {}
+}
+
+// After signing in: pick up any changes left over from last time.
+function restoreQueue() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(queueKey())) || [];
+    if (!saved.length) return;
+    writes = [...saved, ...writes];
+    missedRemote = true;   // reload the league once they're in, so the screen matches
+    toast(`Sending ${saved.length} change${saved.length === 1 ? '' : 's'} saved on this device…`);
+    flush();
+  } catch {}
+}
+
+// Queue one or more changes (applied in order). Falsy entries are skipped, for optional steps.
+let writeSeq = 0;   // counts local changes, so a refresh can tell whether one happened while it loaded
+function persist(...ops) {
+  ops = ops.filter(Boolean);
+  if (!ops.length) return;
+  writeSeq++;
+  writes.push({ ops, done: 0, leagueId: league.id });
+  saveQueue();
+  flush();
+}
+
+function runOp(op) {
+  if (op.upsert) return sb.from(op.upsert).upsert(op.rows);
+  if (op.del) { const q = sb.from(op.del).delete().in(op.col || 'id', op.vals); return op.match ? q.match(op.match) : q; }
+  return sb.rpc(op.rpc, op.args);
+}
+
+async function flush() {
+  if (flushing || !session) return;
+  flushing = true;
+  while (writes.length && session) {
+    const w = writes[0];
+    let error = null;
+    // Resume where it left off (every step is safe to repeat anyway).
+    for (; w.done < w.ops.length; w.done++) {
+      try { ({ error } = await runOp(w.ops[w.done])); } catch (err) { error = { message: String(err) }; }
+      if (error) break;
+    }
+    if (error && !error.code) {
+      // No answer from Supabase (no signal, or a hiccup): wait and retry the same change.
+      offline = true; updateSyncBadge(); saveQueue();
+      await new Promise(r => setTimeout(r, 3000));
+      if (!session) break;
+      continue;
+    }
+    offline = false;
+    writes.shift(); saveQueue();
+    if (error) {
+      // Supabase refused it (e.g. not an admin of this league): drop it and re-sync with the server.
+      toast(`Couldn’t save a change: ${dbErrorText(error)}`);
+      if (league?.id === w.leagueId) missedRemote = true;
+    }
+    updateSyncBadge();
+  }
+  flushing = false;
+  updateSyncBadge();
+  if (missedRemote && session) { missedRemote = false; refreshLeague(); }
+}
+window.addEventListener('online', () => flush());
+
+const saveGame = g => persist({ upsert: 'games', rows: [gameRow(g)] });
+const saveEvent = (g, e) => persist({ upsert: 'events', rows: [eventRow(g, e)] });
+
+function updateSyncBadge() {
+  const el = document.getElementById('sync');
+  el.textContent = offline && writes.length
+    ? `Offline · ${writes.length} change${writes.length === 1 ? '' : 's'} saved on this device, waiting to send`
+    : offlineData ? `Offline · showing data saved ${timeAgo(offlineData)}` : '';
+  el.classList.toggle('show', !!el.textContent);
+}
+
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 6000);
+}
+
+// ----- Live updates from other devices -----
+let needsRender = false, subscribedOnce = false;
+
+// Re-render with fresh data, unless the user is mid-way through something (a pop-up, typing, editing a team).
+function rerender() {
+  const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
+  if (sheet.classList.contains('open') || typing || editing) { needsRender = true; return; }
+  const y = scrollY; route(); scrollTo(0, y);
+}
+
+function subscribeLeague(id) {
+  if (channel) sb.removeChannel(channel);
+  subscribedOnce = false;
+  const f = `league_id=eq.${id}`;
+  const on = (event, table, handler, filter = f) =>
+    channel.on('postgres_changes', { event, schema: 'public', table, ...(filter ? { filter } : {}) }, handler);
+  channel = sb.channel(`league-${id}`);
+  on('INSERT', 'events', p => remoteEvent(p.new));
+  on('INSERT', 'games', p => remoteGame(p.new));
+  on('UPDATE', 'games', p => remoteGame(p.new));
+  on('*', 'teams', refreshLeague);
+  on('*', 'players', refreshLeague);
+  on('UPDATE', 'leagues', refreshLeague, `id=eq.${id}`);
+  // Deletes can't be filtered by league, so check whether the row is one of ours.
+  on('DELETE', 'events', p => remoteDelete('event', p.old.id), null);
+  on('DELETE', 'games', p => remoteDelete('game', p.old.id), null);
+  on('DELETE', 'teams', p => { if (team(p.old.id)) refreshLeague(); }, null);
+  on('DELETE', 'players', p => { if (db.teams.some(t => t.players.some(x => x.id === p.old.id))) refreshLeague(); }, null);
+  if (db.seasonsReady) {  // only once the seasons tables exist
+    on('INSERT', 'seasons', p => remoteSeason(p.new));
+    on('UPDATE', 'seasons', refreshLeague);
+    on('INSERT', 'hall_of_fame', p => remoteHof(p.new));
+    on('DELETE', 'hall_of_fame', p => { if (db.hof.some(h => h.id === p.old.id)) refreshLeague(); }, null);
+  }
+  if (db.teamAdminsReady) {   // only once supabase/012 has been run
+    on('INSERT', 'team_requests', p => {
+      if (isAdmin() && p.new.user_id !== me()) notify(`🧢 ${p.new.user_email || 'Someone'} ${p.new.kind === 'new' ? `wants to add ${p.new.name}` : 'wants to manage a team'}`, '#/games');
+      refreshLeague();
+    });
+    on('UPDATE', 'team_requests', p => {
+      if (p.new.user_id === me() && p.new.status !== 'pending') notify(p.new.status === 'approved' ? '✅ Your team request was approved' : 'Your team request was denied', '#/teamadmin');
+      refreshLeague();
+    });
+    on('*', 'team_admins', refreshLeague);
+  }
+  if (db.profilesReady) {   // only once supabase/010 has been run
+    on('*', 'person_profiles', refreshLeague);
+    on('*', 'availability', refreshLeague);
+  }
+  if (db.claimsReady) {   // only once the claims table exists
+    on('INSERT', 'player_claims', p => remoteClaim(p.new));
+    on('UPDATE', 'player_claims', p => remoteClaim(p.new));
+    on('DELETE', 'player_claims', p => { if (db.claims.some(c => c.id === p.old.id)) { db.claims = db.claims.filter(c => c.id !== p.old.id); rerender(); } }, null);
+  }
+  channel.subscribe(status => {
+    if (status !== 'SUBSCRIBED') return;
+    if (subscribedOnce) refreshLeague(); // reconnected: catch up on anything missed
+    subscribedOnce = true;
+  });
+}
+
+function unsubscribeLeague() {
+  if (channel) sb.removeChannel(channel);
+  channel = null;
+}
+
+function remoteEvent(r) {
+  const g = game(r.game_id);
+  if (!g || g.events.some(e => e.id === r.id)) return; // not ours, or our own change coming back
+  g.events.push(toEvent(r));
+  rerender();
+}
+
+function remoteClaim(c) {
+  const i = db.claims.findIndex(x => x.id === c.id), before = db.claims[i];
+  if (i >= 0) db.claims[i] = c; else db.claims.push(c);
+  const p = player(c.player_id);
+  // Notifications: admins hear about new requests; the person claiming hears the decision.
+  if (!before && c.status === 'pending' && isAdmin() && c.user_id !== me())
+    notify(`🙋 ${c.user_email || 'Someone'} wants to claim ${p.name}`, '#/games');
+  if (before?.status === 'pending' && c.user_id === me() && c.status !== 'pending')
+    notify(c.status === 'approved' ? `✅ You’re now linked to ${p.name}!` : `Your claim for ${p.name} was denied`, `#/profile/${c.player_id}`);
+  rerender();
+}
+
+function remoteGame(r) {
+  const next = toGame(r), g = game(r.id);
+  if (g) {
+    const same = JSON.stringify(gameRow(g)) === JSON.stringify(gameRow({ ...next }));
+    if (same) return;                                      // our own change coming back
+    if (writes.length) { missedRemote = true; return; }    // our newer changes are still saving; re-sync after
+    const was = g.status;
+    Object.assign(g, next, { events: g.events });
+    // Someone else started or finished a game.
+    const h = !isPractice(g) && team(g.homeId), a = team(g.awayId);   // no alerts for practices
+    if (h && a && was !== 'live' && g.status === 'live') notify(`🟢 Live now: ${h.name} vs ${a.name}`, `#/box/${g.id}`);
+    if (h && a && was === 'live' && g.status === 'final') notify(`🏁 Final: ${h.name} ${score(g, h.id)}–${score(g, a.id)} ${a.name}`, `#/box/${g.id}`);
+  } else {
+    (isPractice(next) ? db.practice : db.games).push(next);
+  }
+  rerender();
+}
+
+// New seasons and Hall of Fame inductions (from another device).
+function remoteSeason(s) {
+  if (!db.seasons.some(x => x.id === s.id) && s.status === 'active') notify(`🏁 ${s.name} has started`, '#/games');
+  refreshLeague();
+}
+function remoteHof(h) {
+  if (!db.hof.some(x => x.id === h.id)) notify(`🏆 ${h.name} was inducted into the Hall of Fame`, '#/hof');
+  refreshLeague();
+}
+
+function remoteDelete(kind, id) {
+  if (kind === 'game') {
+    if (!game(id)) return;
+    db.games = db.games.filter(g => g.id !== id);
+    db.practice = db.practice.filter(g => g.id !== id);
+  } else {
+    const g = [...db.games, ...db.practice].find(g => g.events.some(e => e.id === id));
+    if (!g) return;
+    g.events = g.events.filter(e => e.id !== id);
+  }
+  rerender();
+}
+
+// Practice sides ("<gameId>:dark") aren't real teams; practiceSide() in practice.js builds them from the game.
+const team = id => db.teams.find(t => t.id === id) || practiceSide(id);
+// A team's colour as a CSS background: solid, or split diagonally when it has a second colour.
+const teamBg = t => (t?.color2 ? `linear-gradient(135deg, ${t.color} 50%, ${t.color2} 50%)` : t?.color || '#888');
+const game = id => db.games.find(g => g.id === id) || db.practice.find(g => g.id === id);
+function player(id) {
+  for (const t of db.teams) { const p = t.players.find(p => p.id === id); if (p) return p; }
+  return { id, name: '(removed)', number: '' };
+}
+const pname = id => { const p = player(id); return `${p.name}${p.number !== '' ? ' #' + p.number : ''}`; };
+// Goals (and own goals, which are stored under the team they count for).
+const score = (g, tid) => g.events.filter(e => e.teamId === tid && (e.type === 'goal' || e.type === 'own_goal')).length;
+
+// Player and team stats are worked out by analyze() in stats.js; the live tracker is in match.js.
+
+// The score at half time, or null if the match hasn't reached it.
+function halftimeScore(g) {
+  const i = g.events.findIndex(e => e.type === 'half');
+  if (i < 0) return null;
+  const first = { ...g, events: g.events.slice(0, i) };
+  return [score(first, g.homeId), score(first, g.awayId)];
+}
+
+// ---------- Router ----------
+const app = document.getElementById('app');
+const sheet = document.getElementById('sheet');
+
+function route() {
+  closeSheet();
+  document.body.classList.toggle('signed-out', !session || recovering);
+  if (!sb) return renderSetup();
+  if (!authReady) { app.innerHTML = ''; return; }
+  if (recovering) return renderNewPassword();
+  const [page, id] = location.hash.replace(/^#\/?/, '').split('/');
+  if (page === 'view' && id) return enterPublic(id);   // a public link: no account needed
+  document.body.classList.toggle('public', isPublicView());
+  if (!session && !isPublicView()) return renderLogin();
+  const inLeague = !!(league && mode) && ['games', 'game', 'box', 'leaders', 'teams', 'schedule', 'settings', 'profile', 'team', 'practice', 'hof', 'standings', 'playoffs'].includes(page);
+  updateBell();
+  document.body.classList.toggle('no-nav', !inLeague);
+  document.body.classList.toggle('player', !isAdmin());
+  document.getElementById('modeTag').textContent = inLeague ? (isAdmin() ? 'Admin' : isTeamMode() ? 'Team admin' : isPublicView() ? 'Public' : 'Player') : '';
+  document.querySelectorAll('[data-nav]').forEach(a =>
+    a.classList.toggle('on', (a.dataset.nav === 'games' && ['games', 'game', 'box', 'schedule', 'settings'].includes(page))
+      || (a.dataset.nav === 'teams' && ['profile', 'team', 'practice'].includes(page))
+      || (a.dataset.nav === 'leaders' && page === 'hof') || (a.dataset.nav === 'standings' && page === 'playoffs')
+      || a.dataset.nav === page));
+  if (page === 'admin') return id === 'create' ? renderCreateLeague() : renderAdminHome();
+  if (page === 'teamadmin') return id ? renderTeamRequest(id) : renderTeamAdminHome();
+  if (page === 'player') return renderPlayerHome();
+  if (!inLeague) {
+    if (isPublicView()) { location.hash = '#/games'; return; }   // public viewers stay in their league
+    return renderMenu();
+  }
+  if (dataLeagueId !== league.id) {
+    if (loadError) {
+      app.innerHTML = `<h1>${esc(league.name)}</h1><p class="msg error">Couldn’t load this league: ${esc(loadError)}</p>
+        <button class="primary" onclick="loadError = null; route()">Try again</button>`;
+    } else {
+      app.innerHTML = `<h1>${esc(league.name)}</h1><p class="muted">Loading league…</p>`;
+      loadLeague();
+    }
+    return;
+  }
+  const missing = seasonLoadFailed ? [] : seasonsNeeded(page, id);
+  if (missing.length) {
+    app.innerHTML = `<h1>${esc(league.name)}</h1><p class="muted">Loading past season${missing.length === 1 ? '' : 's'}…</p>`;
+    loadSeasons(missing);
+    return;
+  }
+  if (page === 'game' && game(id)) return canTrack(game(id)) ? renderTracker(game(id)) : renderBox(game(id));
+  if (page === 'box' && game(id)) { renderBox(game(id)); return tickClocks(); }
+  if (page === 'leaders') return renderLeaders();
+  if (page === 'teams') return isAdmin() || (isTeamMode() && db.teamAdminsReady) ? renderTeams() : renderRosters();
+  if (page === 'profile') return renderProfile(id);
+  if (page === 'team') return renderTeamPage(id);
+  if (page === 'practice') return renderTeamPage(id, 'practice');
+  if (page === 'hof') return renderHallOfFame();
+  if (page === 'standings') return renderStandings();
+  if (page === 'playoffs') return renderPlayoffs();
+  if (page === 'schedule' && isAdmin()) return renderSchedule();
+  if (page === 'settings' && isAdmin()) return renderSettings();
+  renderGames();
+}
+
+// ---------- Main menu ----------
+function renderMenu() {
+  app.innerHTML = `
+    <h1>Main menu</h1>
+    ${league && mode ? `<a class="card game-link" href="#/games" style="${borderStyle(league.border_colors)}">
+      <span><span class="muted">Continue</span><br><b>${esc(league.name)}</b></span>
+      <span class="badge">${isAdmin() ? 'ADMIN' : isTeamMode() ? 'TEAM ADMIN' : 'PLAYER'} →</span></a>` : ''}
+    <div class="menu">
+      <a class="card" href="#/player">
+        <span class="icon">🏃</span>
+        <span><b>Player</b><span class="muted">View scores, box scores and season leaders.</span></span>
+      </a>
+      <a class="card" href="#/admin">
+        <span class="icon">📋</span>
+        <span><b>League Admin</b><span class="muted">Create or join a league, track live games and manage rosters.</span></span>
+      </a>
+      <a class="card" href="#/teamadmin">
+        <span class="icon">🧢</span>
+        <span><b>Team Admin</b><span class="muted">Register your team in a league, manage its roster, and track its games.</span></span>
+      </a>
+    </div>
+    ${installCard()}
+    <h2>Account</h2>
+    <div class="card row">
+      <span class="muted">Signed in as <b>${esc(session.user.email)}</b></span>
+      <button class="small" onclick="signOut()">Sign out</button>
+    </div>`;
+}
+
+// ----- Installing the app -----
+let installPrompt = null;   // Android / desktop Chrome hand us this when the app can be installed
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; if (!location.hash.replace(/^#\/?/, '')) route(); });
+window.addEventListener('appinstalled', () => { installPrompt = null; toast('Installed! Open Soccer Stats from your home screen.'); });
+const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+
+function installCard() {
+  if (isInstalled()) return '';
+  if (installPrompt) return `<button class="card game-link install" onclick="installApp()">
+    <span><b>📲 Install the app</b><br><span class="muted">Opens from your home screen, works with no signal, and can send phone alerts.</span></span><span class="muted">→</span></button>`;
+  if (isIOS()) return `<div class="card install"><b>📲 Add to your home screen</b>
+    <div class="muted">In Safari, tap <b>Share</b> (the square with an arrow), then <b>Add to Home Screen</b>. It then opens like an app, works with no signal, and can send alerts.</div></div>`;
+  return '';
+}
+async function installApp() {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice;
+  installPrompt = null; route();
+}
+
+function enterLeague(l, m) {
+  if (league?.id !== l.id) { unsubscribeLeague(); db = emptyDb(); dataLeagueId = null; loadError = null; viewSeasonId = null; seasonLoadFailed = false; }
+  try { sessionStorage.removeItem('soccer-public'); } catch {}
+  league = { id: l.id, name: l.name, border_colors: l.border_colors || null }; mode = m; editing = null;
+  rememberLeague();
+  try { localStorage.setItem('soccer-mode', m); } catch {}
+  if (location.hash === '#/games') route(); else location.hash = '#/games';
+}
+
+function leaveLeague() {
+  unsubscribeLeague(); db = emptyDb(); dataLeagueId = null;
+  league = null; mode = null;
+  try { localStorage.removeItem('soccer-league'); localStorage.removeItem('soccer-mode'); } catch {}
+}
+
+// ---------- Leagues (stored in Supabase) ----------
+const leagueCache = {};   // id → league, from the latest search / list
+let myLeagueIds = new Set();
+
+function dbErrorText(error) {
+  if (/schema cache|does not exist/i.test(error.message))
+    return 'The database needs an update. Run the newest script in the supabase folder in the Supabase SQL Editor.';
+  return error.message;
+}
+
+// A league's border: one colour = solid, 2–4 colours = a multicoloured blend.
+function borderStyle(colors) {
+  const c = (colors || []).filter(x => /^#[0-9a-f]{6}$/i.test(x));
+  if (!c.length) return '';
+  const stops = c.length === 1 ? `${c[0]}, ${c[0]}` : c.join(', ');
+  return `border: 3px solid transparent; background: linear-gradient(var(--card), var(--card)) padding-box, linear-gradient(90deg, ${stops}) border-box;`;
+}
+
+const BORDER_PRESETS = [
+  ['#ff6a1a'], ['#2563eb'], ['#16a34a'],
+  ['#ff6a1a', '#facc15'], ['#2563eb', '#06b6d4'], ['#7c3aed', '#ec4899'],
+  ['#ef4444', '#facc15', '#22c55e', '#3b82f6']
+];
+let borderDraft = [];
+
+function openBorderEditor() {
+  borderDraft = [...(league.border_colors || ['#ff6a1a'])];
+  renderBorderEditor();
+}
+
+function renderBorderEditor() {
+  openSheet(`
+    <h3>League border</h3>
+    <div class="card" id="borderPreview" style="${borderStyle(borderDraft)}">
+      <b>${esc(league.name)}</b><div class="muted">Preview</div>
+    </div>
+    <div class="muted" style="margin-bottom:6px">Presets</div>
+    <div class="presets">${BORDER_PRESETS.map((p, i) => `
+      <button class="preset" style="${borderStyle(p)}" onclick="borderDraft = [...BORDER_PRESETS[${i}]]; renderBorderEditor()"
+        aria-label="Preset ${i + 1}"></button>`).join('')}
+    </div>
+    <div class="muted" style="margin:14px 0 6px">Your colours (1 = solid, up to 4 = blend)</div>
+    <div class="swatches">
+      ${borderDraft.map((c, i) => `<span class="swatch">
+        <input type="color" value="${esc(c)}" oninput="borderDraft[${i}] = this.value; updateBorderPreview()">
+        ${borderDraft.length > 1 ? `<button class="small" onclick="borderDraft.splice(${i}, 1); renderBorderEditor()" aria-label="Remove colour">✕</button>` : ''}
+      </span>`).join('')}
+      ${borderDraft.length < 4 ? '<button class="small" onclick="addBorderColor()">+ Colour</button>' : ''}
+    </div>
+    <div class="msg error" id="borderMsg"></div>
+    <div class="actions" style="margin-top:12px">
+      <button onclick="saveBorder(null)">No border</button>
+      <button class="goal" onclick="saveBorder(borderDraft)">Save border</button>
+      <button class="full" onclick="closeSheet()">Cancel</button>
+    </div>`);
+}
+
+function addBorderColor() {
+  borderDraft.push(['#2563eb', '#facc15', '#16a34a', '#ec4899'][borderDraft.length % 4]);
+  renderBorderEditor();
+}
+function updateBorderPreview() {
+  document.getElementById('borderPreview').setAttribute('style', borderStyle(borderDraft));
+}
+
+async function saveBorder(colors) {
+  const { data, error } = await sb.rpc('set_league_border', { p_league_id: league.id, p_colors: colors });
+  if (error) { document.getElementById('borderMsg').textContent = dbErrorText(error); return; }
+  league.border_colors = data.border_colors;
+  rememberLeague();
+  route();
+}
+
+// Which of these leagues have a game in progress right now.
+async function liveLeagueIds(ids) {
+  if (!ids.length) return new Set();
+  const { data } = await sb.from('games').select('league_id').eq('status', 'live').in('league_id', ids);
+  return new Set((data || []).map(r => r.league_id));
+}
+const liveBadge = '<span class="badge live" style="margin-left:6px">● LIVE</span>';
+
+async function renderAdminHome() {
+  app.innerHTML = '<h1>League Admin</h1><p class="muted">Loading your leagues…</p>';
+  // Only soccer leagues (frisbee leagues in the same database belong to the frisbee app).
+  const { data, error } = await sb.from('league_admins').select('leagues(id, name, border_colors, sport)').eq('user_id', session.user.id);
+  if (location.hash !== '#/admin') return;
+  if (error) { app.innerHTML = `<h1>League Admin</h1><p class="msg error">${esc(dbErrorText(error))}</p>`; return; }
+  const mine = data.map(r => r.leagues).filter(l => l?.sport === 'soccer').sort((a, b) => a.name.localeCompare(b.name));
+  mine.forEach(l => leagueCache[l.id] = l);
+  myLeagueIds = new Set(mine.map(l => l.id));
+  const ids = mine.map(l => l.id);
+  const [live, claims] = await Promise.all([
+    liveLeagueIds(ids),
+    ids.length ? sb.from('player_claims').select('league_id').eq('status', 'pending').in('league_id', ids).neq('user_id', me()) : { data: [] }
+  ]);
+  if (location.hash !== '#/admin') return;
+  const requests = {};
+  for (const c of claims.data || []) requests[c.league_id] = (requests[c.league_id] || 0) + 1;
+  app.innerHTML = `
+    <h1>League Admin</h1>
+    ${mine.length ? `<h2>Your leagues</h2>${mine.map(l => `
+      <a class="card game-link" href="#/games" style="${borderStyle(l.border_colors)}" onclick="enterLeague(leagueCache['${l.id}'], 'admin'); return false">
+        <span><b>${esc(l.name)}</b>${live.has(l.id) ? liveBadge : ''}
+          ${requests[l.id] ? `<br><span class="muted">🔔 ${requests[l.id]} claim request${requests[l.id] === 1 ? '' : 's'}</span>` : ''}</span>
+        <span class="muted">Open →</span></a>`).join('')}`
+      : '<div class="card"><b>You don’t manage any leagues yet.</b><div class="muted">Create a new league, or join one below with its league password.</div></div>'}
+    <a class="btn primary" style="display:block" href="#/admin/create">+ Create league</a>
+    <h2>Join a league</h2>
+    <input id="q" placeholder="Search leagues by name" oninput="searchLeagues('admin')" autocomplete="off">
+    <div id="results" style="margin-top:12px"></div>`;
+  searchLeagues('admin');
+}
+
+function renderPlayerHome() {
+  app.innerHTML = `
+    <h1>Find your league</h1>
+    <input id="q" placeholder="Search leagues by name" oninput="searchLeagues('player')" autocomplete="off">
+    <div id="results" style="margin-top:12px"></div>`;
+  searchLeagues('player');
+}
+
+let searchTimer;
+function searchLeagues(kind) {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    const q = document.getElementById('q').value.trim().replace(/[%_\\]/g, '\\$&');
+    let req = sb.from('leagues').select('id, name, border_colors').eq('sport', 'soccer').order('name').limit(25);
+    if (q) req = req.ilike('name', `%${q}%`);
+    const { data, error } = await req;
+    const box = document.getElementById('results');
+    if (!box) return;
+    if (error) { box.innerHTML = `<p class="msg error">${esc(dbErrorText(error))}</p>`; return; }
+    data.forEach(l => leagueCache[l.id] = l);
+    const live = await liveLeagueIds(data.map(l => l.id));
+    if (!document.getElementById('results')) return;
+    if (!data.length) {
+      box.innerHTML = `<p class="muted">${q ? 'No leagues match that name.' : 'No leagues have been created yet.'}</p>`;
+      return;
+    }
+    box.innerHTML = data.map(l => kind === 'team'
+      ? `<a class="card game-link" href="#/teamadmin/${l.id}" style="${borderStyle(l.border_colors)}">
+          <span><b>${esc(l.name)}</b></span><span class="muted">Register or manage a team →</span></a>`
+      : kind === 'player'
+      ? `<a class="card game-link" href="#/games" style="${borderStyle(l.border_colors)}" onclick="enterLeague(leagueCache['${l.id}'], 'player'); return false">
+          <span><b>${esc(l.name)}</b>${live.has(l.id) ? liveBadge : ''}</span><span class="muted">View →</span></a>`
+      : myLeagueIds.has(l.id)
+        ? `<div class="card game-link" style="${borderStyle(l.border_colors)}"><span><b>${esc(l.name)}</b>${live.has(l.id) ? liveBadge : ''}</span><span class="badge">You’re an admin</span></div>`
+        : `<div class="card" id="join-${l.id}" style="${borderStyle(l.border_colors)}"><div class="game-link"><b>${esc(l.name)}</b>
+            <button class="small" onclick="showJoin('${l.id}')">Join</button></div></div>`).join('');
+  }, 250);
+}
+
+function showJoin(id) {
+  document.getElementById('join-' + id).innerHTML = `
+    <b>${esc(leagueCache[id].name)}</b>
+    <form class="row" style="margin-top:10px" onsubmit="joinLeague(event, '${id}')">
+      <input id="lp-${id}" type="password" placeholder="League password" autocomplete="off" required>
+      <button class="primary small">Join</button>
+    </form>
+    <div class="msg error" id="lm-${id}"></div>`;
+  document.getElementById('lp-' + id).focus();
+}
+
+async function joinLeague(ev, id) {
+  ev.preventDefault();
+  const btn = ev.submitter; btn.disabled = true;
+  const { data, error } = await sb.rpc('join_league', { p_league_id: id, p_password: document.getElementById('lp-' + id).value });
+  btn.disabled = false;
+  if (error) { document.getElementById('lm-' + id).textContent = dbErrorText(error); return; }
+  // Since supabase/007, join_league answers { ok, league } or { ok: false, error } (so wrong guesses can be counted).
+  if (data && 'ok' in data) {
+    if (!data.ok) { document.getElementById('lm-' + id).textContent = data.error; return; }
+    return enterLeague(data.league, 'admin');
+  }
+  enterLeague(data, 'admin');
+}
+
+function renderCreateLeague() {
+  app.innerHTML = `
+    <div class="card auth">
+      <h1>Create a league</h1>
+      <form onsubmit="createLeague(event)">
+        <input id="ln" placeholder="League name" maxlength="60" minlength="2" required autocomplete="off">
+        <input id="lpw" type="password" placeholder="League password (4+ characters)" minlength="4" required autocomplete="new-password">
+        <input id="lpw2" type="password" placeholder="Confirm league password" minlength="4" required autocomplete="new-password">
+        <label class="field">Players on the pitch per team (including the goalkeeper)
+          <select id="lfield">${[11, 9, 8, 7, 6, 5].map(n => `<option value="${n}">${n}-a-side</option>`).join('')}</select></label>
+        <label class="field">Minimum players per team
+          <input id="lmin" type="number" min="0" max="60" value="14" inputmode="numeric">
+          <span class="muted" style="font-size:12px">Teams registered by team admins need at least this many players. Use 0 for no minimum. You can change it later in Settings.</span></label>
+        <button class="primary" id="createBtn">Create league</button>
+      </form>
+      <div id="authMsg" class="msg"></div>
+      <p class="muted">Share the league password only with people who should be admins. Anyone with it can join and manage the league.</p>
+      <div class="links"><a href="#/admin">← Back</a></div>
+    </div>`;
+}
+
+async function createLeague(ev) {
+  ev.preventDefault();
+  const pw = document.getElementById('lpw').value;
+  if (pw !== document.getElementById('lpw2').value) return authMsg('The passwords don’t match.', true);
+  const min = Math.max(0, Math.min(60, parseInt(document.getElementById('lmin').value, 10) || 0));
+  const btn = document.getElementById('createBtn'); btn.disabled = true;
+  const { data, error } = await sb.rpc('create_league', { p_name: document.getElementById('ln').value, p_password: pw, p_min_roster: min,
+    p_sport: 'soccer', p_on_field: +document.getElementById('lfield').value });   // these two need supabase/017
+  btn.disabled = false;
+  if (error) return authMsg(dbErrorText(error), true);
+  enterLeague(data, 'admin');
+}
+window.addEventListener('hashchange', route);
+
+// ---------- Games list ----------
+const STATUS = { live: 'LIVE', final: 'FINAL', scheduled: 'UPCOMING' };
+const fmtWhen = w => new Date(w).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+function gameCard(g) {
+  const h = team(g.homeId), a = team(g.awayId), upcoming = g.status === 'scheduled';
+  const info = `<div>
+      <div><span class="dot" style="background:${teamBg(h)}"></span>${esc(h.name)} ${upcoming ? '' : `<b>${score(g, h.id)}</b>`}</div>
+      <div><span class="dot" style="background:${teamBg(a)}"></span>${esc(a.name)} ${upcoming ? '' : `<b>${score(g, a.id)}</b>`}</div>
+      <div class="muted">${isPractice(g) ? '🏃 Practice · ' : ''}${g.stage === 'playoff' ? `🏆 Playoffs · ${roundName(g.round, Math.log2(db.seasons.find(s => s.id === g.seasonId)?.playoffs?.size || 2))}${upcoming ? '' : ' · '}` : ''}${upcoming
+        ? (g.stage === 'playoff' ? '' : `${fmtWhen(g.when)} · Field ${g.field} · Round ${g.round}`) : new Date(g.created).toLocaleDateString()}</div>
+    </div>`;
+  if (upcoming) return `<div class="card"><div class="game-link">${info}${canTrack(g)
+    ? `<button class="small primary" onclick="startScheduled('${g.id}')">Start</button>`
+    : '<span class="badge scheduled">UPCOMING</span>'}</div>${availabilityLine(g)}</div>`;
+  return `<a class="card game-link" href="#/${g.status === 'live' && canTrack(g) ? 'game' : 'box'}/${g.id}">
+    ${info}<span class="badge ${g.status}">${STATUS[g.status]}</span></a>`;
+}
+
+function renderGames() {
+  const teams = seasonTeams(), games = seasonGames(), edit = canEdit();
+  const opts = teams.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+  const live = games.filter(g => g.status === 'live').sort((a, b) => b.created - a.created);
+  const upcoming = games.filter(g => g.status === 'scheduled').sort((a, b) => a.when.localeCompare(b.when));
+  const results = games.filter(g => g.status === 'final').sort((a, b) => b.created - a.created);
+  const s = viewSeason();
+  app.innerHTML = `
+    <div class="card" style="${borderStyle(league.border_colors)}">
+      <div class="row">
+        <h1 style="margin:0">${esc(league.name)}</h1>
+        ${isAdmin() ? '<a class="btn small" href="#/settings">⚙️ Settings</a>' : ''}
+        ${isPublicView() ? '' : `<a class="btn small" href="#/${isAdmin() ? 'admin' : isTeamMode() ? 'teamadmin' : 'player'}">Switch league</a>`}
+      </div>
+      ${s ? `<div class="muted" style="margin-top:4px">${esc(s.name)}${s.status === 'archived' ? ' · finished' : ''}</div>` : ''}
+    </div>
+    ${publicBanner()}
+    ${seasonPicker('pickSeason')}
+    ${viewingPast() ? `<div class="card past-season">📚 You’re looking at <b>${esc(s.name)}</b>, a finished season. Its stats are saved and can’t be changed.
+      <a href="#/games" onclick="pickSeason('${activeSeason()?.id}'); return false">Back to the current season →</a></div>` : ''}
+    ${teamRequestsCard()}
+    ${isAdmin() ? claimRequestsCard() : isTeamMode() ? claimRequestsCard() + myStatsCard() : myStatsCard()}
+    ${seasonStatusCard()}
+    ${!edit && isTeamMode() && !viewingPast() && db.teamAdminsReady ? (() => {
+      const mine = myTeamsThisSeason(), others = teams;
+      if (!mine.length) return `<div class="card"><b>You don’t manage a team in ${esc(s?.name || 'this season')}.</b>
+        <div class="muted">Ask a league admin, or <a href="#/teamadmin">register your team</a>.</div></div>`;
+      return `<div class="card">
+        <div class="muted" style="margin-bottom:8px">Start a game for your team</div>
+        <div class="row">
+          <select id="home">${mine.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select>
+          <span style="flex:0 0 auto">vs</span>
+          <select id="away">${others.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select>
+        </div>
+        <button class="primary" style="width:100%;margin-top:10px" onclick="newGame()">Start tracking</button>
+        ${db.practiceReady ? mine.map(t => `<a class="btn" style="display:block;margin-top:8px;text-align:center" href="#/practice/${t.id}">🏃 ${esc(t.name)} practice</a>`).join('') : ''}
+      </div>`;
+    })() : ''}
+    ${edit && teams.length < 2 ? `<div class="card">
+      <b>Add your teams first</b>
+      <div class="muted">You need at least two teams to start a game. Add them on the <a href="#/teams">Teams</a> tab.</div>
+    </div>` : edit ? `<div class="card">
+      <div class="muted" style="margin-bottom:8px">Start a new game</div>
+      <div class="row">
+        <select id="home">${opts}</select>
+        <span style="flex:0 0 auto">vs</span>
+        <select id="away">${opts}</select>
+      </div>
+      <button class="primary" style="width:100%;margin-top:10px" onclick="newGame()">Start tracking</button>
+    </div>
+    <a class="btn" style="display:block;margin-bottom:12px" href="#/schedule">📅 Schedule creator</a>` : ''}
+    ${games.length ? '' : `<p class="muted">No games yet.${edit && teams.length >= 2 ? ' Start one above, or build a season with the schedule creator.' : ''}</p>`}
+    ${live.length ? `<h2>Live now</h2>${live.map(gameCard).join('')}` : ''}
+    ${upcoming.length ? `<div class="row"><h2>Upcoming</h2>
+      ${edit ? '<button class="small" onclick="clearSchedule()">Clear schedule</button>' : ''}</div>
+      ${upcoming.map(gameCard).join('')}` : ''}
+    ${results.length ? `<h2>Results</h2>${results.map(gameCard).join('')}` : ''}
+    ${seasonOverLink()}`;
+  const home = document.getElementById('home'), away = document.getElementById('away');
+  if (away) away.value = (teams.find(t => t.id !== home.value) || teams[1]).id;
+  // League admins: create any playoff games whose teams are now known (e.g. after a team admin finished a game).
+  if (edit && db.playoffsReady) advanceBracket();
+}
+
+// ---------- Player claims ----------
+function claimRequestsCard() {
+  const pending = pendingClaims();
+  if (!pending.length) return '';
+  return `
+    <div class="card" style="border:2px solid var(--accent)">
+      <b>🔔 Player claim request${pending.length === 1 ? '' : 's'} (${pending.length})</b>
+      ${pending.map(c => {
+        const p = player(c.player_id), t = teamOf(c.player_id);
+        return `<div class="claim-row">
+          <span><b>${esc(c.user_email || 'Someone')}</b> wants to claim
+            <b>#${esc(p.number)} ${esc(p.name)}</b>${t ? ` <span class="muted">(${esc(t.name)})</span>` : ''}</span>
+          <span class="row">
+            <button class="small" onclick="decideClaim('${c.id}', false, this)">Deny</button>
+            <button class="small primary" onclick="decideClaim('${c.id}', true, this)">Approve</button>
+          </span>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+async function decideClaim(id, approve, btn) {
+  btn.disabled = true;
+  const { data, error } = await sb.rpc('decide_claim', { p_claim_id: id, p_approve: approve });
+  if (error) { btn.disabled = false; toast(dbErrorText(error)); refreshLeague(); return; }
+  const p = player(data.player_id);
+  if (approve) {
+    // Mirror what the database did: link the player, and turn down anyone else waiting on them.
+    const pl = db.teams.flatMap(t => t.players).find(x => x.id === data.player_id);
+    if (pl) pl.userId = data.user_id;
+    db.claims.forEach(c => { if (c.player_id === data.player_id && c.status === 'pending') c.status = 'denied'; });
+  }
+  const i = db.claims.findIndex(c => c.id === id);
+  if (i >= 0) db.claims[i] = data;
+  toast(approve ? `Approved: ${data.user_email || 'they'} can now follow ${p.name}’s stats.` : `Denied the claim for ${p.name}.`);
+  route();
+}
+
+// Player side: a short "your stats" card, or a nudge to claim a player.
+function myStatsCard() {
+  if (!db.claimsReady || isPublicView()) return '';
+  const mine = myPlayer(), pending = myPendingClaim();
+  if (mine) {
+    const s = statsOf(analyze(db.games.filter(g => (g.seasonId === mine.team.seasonId || !db.seasonsReady) && countsInSeason(g))), mine.id);
+    return `<a class="card game-link" href="#/profile/${mine.id}">
+      <span><span class="muted">Your stats · #${esc(mine.number)} ${esc(mine.name)}</span><br>
+        <b>${s.g} G · ${s.a} A</b> <span class="muted">· ${s.gp} app${s.gp === 1 ? '' : 's'} · ${Math.round(s.min)} min${s.cs ? ` · ${s.cs} clean sheet${s.cs === 1 ? '' : 's'}` : ''}</span></span>
+      <span class="muted">View →</span></a>`;
+  }
+  if (pending) return `<div class="card"><b>Claim pending</b>
+    <div class="muted">You asked to claim ${esc(player(pending.player_id).name)}. A league admin needs to approve it.</div></div>`;
+  return `<a class="card game-link" href="#/teams">
+    <span><b>Are you on a roster?</b><br><span class="muted">Claim your player to follow your own stats.</span></span>
+    <span class="muted">Teams →</span></a>`;
+}
+
+async function claimPlayer(pid) {
+  const p = player(pid);
+  if (!confirm(`Claim #${p.number} ${p.name}? An admin of ${league.name} will need to approve it.`)) return;
+  const { data, error } = await sb.rpc('request_claim', { p_player_id: pid });
+  if (error) return toast(dbErrorText(error));
+  db.claims.push(data);
+  toast('Claim sent! You’ll see your stats here once an admin approves it.');
+  route();
+}
+
+async function cancelClaim(id) {
+  if (!confirm('Cancel your claim request?')) return;
+  const { error } = await sb.rpc('cancel_claim', { p_claim_id: id });
+  if (error) return toast(dbErrorText(error));
+  db.claims = db.claims.filter(c => c.id !== id);
+  route();
+}
+
+async function releasePlayer(pid) {
+  const p = allPlayers().find(x => x.id === pid);
+  const mine = p.userId === me();
+  if (!confirm(mine ? `Unclaim ${p.name}? You’d need an admin to approve you again.` : `Unlink ${p.name} from the account that claimed them?`)) return;
+  const { error } = await sb.rpc('release_player', { p_player_id: pid });
+  if (error) return toast(dbErrorText(error));
+  const pl = db.teams.flatMap(t => t.players).find(x => x.id === pid);
+  if (pl) pl.userId = null;
+  route();
+}
+
+// Who claimed a player, for admins (from the approved claim).
+const claimedBy = pid => db.claims.find(c => c.player_id === pid && c.status === 'approved')?.user_email;
+
+// Read-only rosters for players, with Claim buttons.
+function renderRosters() {
+  // Claims belong to a season, so only this season's rosters can be claimed.
+  const teams = seasonTeams(), pending = myPendingClaim();
+  const mine = allPlayers().find(p => p.userId && p.userId === me() && inViewSeason(p.team));
+  const canClaim = db.claimsReady && session && !isPublicView() && !viewingPast() && !mine && !pending;
+  app.innerHTML = `
+    <h1>Teams</h1>
+    ${seasonPicker('pickSeason')}
+    ${!db.claimsReady || viewingPast() || isPublicView() ? '' : mine
+      ? `<div class="card"><b>You’re #${esc(mine.number)} ${esc(mine.name)} on ${esc(mine.team.name)}.</b>
+          <div class="muted"><a href="#/profile/${mine.id}">View your stats →</a></div></div>`
+      : pending ? `<div class="card"><b>Claim pending</b><div class="muted">Waiting for an admin to approve you as
+          ${esc(player(pending.player_id).name)}.</div></div>`
+      : '<p class="muted">Find yourself on a roster and tap <b>Claim</b>. Once a league admin approves it, you can follow your own stats.</p>'}
+    ${teams.length ? '' : '<p class="muted">No teams yet.</p>'}
+    ${teams.map(t => `
+      <div class="card">
+        <h2 style="margin-top:0"><a href="#/team/${t.id}" style="color:inherit"><span class="dot" style="background:${teamBg(t)}"></span>${esc(t.name)}</a></h2>
+        ${t.players.length ? `<ul class="roster">${t.players.map(p => `
+          <li><a href="#/profile/${p.id}" class="roster-name">${avatar({ ...p, team: t }, 28)}<span class="muted">#${esc(p.number)}</span> ${esc(p.name)}</a>
+            <span class="row" style="flex:0 0 auto">${
+              p.userId && p.userId === me() ? `<span class="badge you">YOU</span><button class="small" onclick="releasePlayer('${p.id}')">Unclaim</button>`
+              : p.userId ? '<span class="badge">CLAIMED</span>'
+              : pending?.player_id === p.id ? `<span class="badge scheduled">PENDING</span><button class="small" onclick="cancelClaim('${pending.id}')">Cancel</button>`
+              : canClaim ? `<button class="small primary" onclick="claimPlayer('${p.id}')">Claim</button>` : ''
+            }</span></li>`).join('')}
+        </ul>` : '<div class="muted">No players yet.</div>'}
+      </div>`).join('')}`;
+}
+
+// A player's season: totals plus game by game.
+function renderProfile(pid) {
+  const t = teamOf(pid);
+  if (!t) { location.hash = '#/teams'; return; }
+  const p = t.players.find(x => x.id === pid);
+  const played = db.games.filter(g => g.status !== 'scheduled' && (g.homeId === t.id || g.awayId === t.id))
+    .sort((a, b) => b.created - a.created);
+  // Season totals follow the playoff-stats choice; playoffs kept separately get their own line.
+  const an = analyze(played.filter(countsInSeason)), s = statsOf(an, pid);
+  const playoffGames = played.filter(countsInPlayoffs);
+  const ps = playoffGames.length ? statsOf(analyze(playoffGames), pid) : null;
+  const rows = played.filter(playoffStatsKept).map(g => {
+    const opp = team(g.homeId === t.id ? g.awayId : g.homeId), us = score(g, t.id), them = score(g, opp.id);
+    return { gm: g, opp, name: opp.name, result: `${isPlayoff(g) ? '🏆 ' : ''}${g.status === 'live' ? 'LIVE ' : us > them ? 'W ' : us < them ? 'L ' : 'D '}${us}–${them}`, ...statsOf(analyze([g]), pid) };
+  }).filter(r => r.gp);   // only matches they played in
+  // Who they set up most, and who sets them up most.
+  const top = (list, n = 5) => Object.entries(list.reduce((m, id) => ({ ...m, [id]: (m[id] || 0) + 1 }), {}))
+    .sort((x, y) => y[1] - x[1]).slice(0, n);
+  const assistsTo = top(an.flows.filter(f => f.a === pid && f.g).map(f => f.g));
+  const assistedBy = top(an.flows.filter(f => f.g === pid).map(f => f.a));
+  const barList = (title, list, note) => list.length ? `<div class="card chart"><div class="chart-title">${title}</div>
+    ${list.map(([id, n]) => `<div class="hbar"><span class="hbar-name">${esc(player(id).name)}</span>
+      <span class="hbar-track"><i style="width:${(n / list[0][1]) * 100}%"></i></span><span class="hbar-val">${n}</span></div>`).join('')}
+    <div class="muted" style="font-size:12px;margin-top:6px">${note}</div></div>` : '';
+  const keeperTiles = x => (x.gkMin ? `<h2>🧤 Goalkeeping</h2>
+    ${tiles([['Matches in goal', x.gkGp], ['Clean sheets', x.cs], ['Saves', x.sv], ['Save %', fmtPct(x.svp), `${x.gc} conceded`],
+      ['Goals against per 90', fmtDec(x.gaa)]])}` : '');
+
+  // All-time: every season this person played (linked by personId).
+  const entries = db.seasonsReady ? personEntries(p.personId) : [p];
+  const hof = db.hof.find(h => h.person_id === p.personId);
+  const allTime = entries.length > 1 ? (() => {
+    const at = allTimeStats()[p.personId] || finishPlayer(ZERO());
+    const perSeason = entries.map(e => {
+      const games = db.games.filter(g => g.status !== 'scheduled' && (g.homeId === e.team.id || g.awayId === e.team.id) && countsInSeason(g));
+      return { ...e, name: seasonName(e.team.seasonId), ...statsOf(analyze(games), e.id) };
+    }).reverse();
+    return `<h2>All time · ${entries.length} seasons</h2>
+      ${tiles([['Appearances', at.gp], ['Goals', at.g], ['Assists', at.a], ['Minutes', fmtInt(at.min)], ...(at.gkMin ? [['Clean sheets', at.cs]] : []), ['Cards', `${at.yc} 🟨 ${at.rc} 🟥`]])}
+      <div class="card">${statTable(perSeason, [
+        { k: 'name', h: 'Season', l: true, f: r => `<a href="#/profile/${r.id}" style="color:inherit">${esc(r.name)}</a>
+          <div class="muted" style="font-size:12px">${esc(r.team.name)}</div>` },
+        { k: 'gp', h: 'Apps' }, { k: 'min', h: 'Min', f: r => fmtInt(r.min) }, { k: 'g', h: 'G' }, { k: 'a', h: 'A' }, { k: 'cs', h: 'CS' }])}</div>`;
+  })() : '';
+
+  const prof = profileOf(p.personId);
+  app.innerHTML = `
+    <div class="profile-head">
+      ${avatar({ ...p, team: t }, 72)}
+      <div style="flex:1;min-width:0">
+        <div class="row"><h1 style="margin:0">#${esc(p.number)} ${esc(p.name)}</h1>
+          ${p.userId && p.userId === me() ? '<span class="badge you" style="flex:0 0 auto">YOU</span>' : ''}</div>
+        ${prof?.position ? `<div class="muted">${esc(prof.position)}</div>` : ''}
+      </div>
+    </div>
+    ${prof?.bio ? `<p class="bio">${esc(prof.bio)}</p>` : ''}
+    ${canEditPerson(p) ? `<button class="small" style="margin-bottom:12px" onclick="editProfile('${p.id}')">✏️ Edit profile${prof ? '' : ' (add a photo and bio)'}</button>` : ''}
+    ${hof ? `<a class="card hof-banner" href="#/hof">🏆 Hall of Fame${hof.note ? ` · “${esc(hof.note)}”` : ''}</a>` : ''}
+    <p class="muted"><a href="#/team/${t.id}" style="color:inherit"><span class="dot" style="background:${teamBg(t)}"></span>${esc(t.name)}</a>
+      ${db.seasonsReady ? `· ${esc(seasonName(t.seasonId))}` : ''} · ${s.gp} appearance${s.gp === 1 ? '' : 's'}</p>
+    ${profileTabs(p, t)}
+    ${showingPracticeProfile(p, t) ? practiceProfileHtml(p, t) : `
+    ${allTime}
+    ${allTime ? `<h2 style="margin-top:26px">${esc(seasonName(t.seasonId))}</h2>` : ''}
+    <h2>Attacking</h2>
+    ${tiles([['Goals', s.g, s.pg ? `${s.pg} from penalties` : ''], ['Assists', s.a], ['Shots', s.sh, `${s.sot} on target`],
+      ['Shot accuracy', fmtPct(s.acc)], ['Conversion', fmtPct(s.conv), 'Goals ÷ shots']])}
+    <h2>Playing time</h2>
+    ${tiles([['Appearances', s.gp, `${s.gs} start${s.gs === 1 ? '' : 's'} · ${s.sb} off the bench`], ['Minutes', fmtInt(s.min)],
+      ['Goals + assists per 90', fmtDec(s.ga90)], ['Minutes per G+A', fmtInt(s.minPerGA)]])}
+    <h2>Discipline</h2>
+    ${tiles([['Yellow cards', s.yc], ['Red cards', s.rc], ['Fouls', s.fc], ['Offsides', s.off], ...(s.og ? [['Own goals', s.og]] : [])])}
+    ${keeperTiles(s)}
+    ${ps ? `<h2>🏆 Playoffs</h2>
+    ${tiles([['Appearances', ps.gp], ['Goals', ps.g], ['Assists', ps.a], ['Minutes', fmtInt(ps.min)], ...(ps.gkMin ? [['Clean sheets', ps.cs]] : [])])}` : ''}
+    ${barList('Assists to', assistsTo, 'Goals they set up for each teammate.')}
+    ${barList('Assisted by', assistedBy, 'Their goals set up by each teammate.')}
+    <h2>Match by match</h2>
+    ${rows.length ? `${statCatTabs('route()')}<div class="card">${statTable(rows, statCols(
+      { k: 'name', h: 'Match', l: true, f: r => `<a href="#/box/${r.gm.id}">vs ${esc(r.opp.name)}</a>
+        <div class="muted" style="font-size:12px">${esc(r.result)} · ${new Date(r.gm.created).toLocaleDateString()}</div>` }))}</div>
+      ${statFootnote}` : '<p class="muted">No matches played yet.</p>'}`}`;
+}
+
+// ---------- League settings ----------
+function renderSettings() {
+  app.innerHTML = `
+    <div class="row"><h1>League settings</h1><a class="btn small" href="#/games">← Games</a></div>
+
+    <h2>Players on the pitch</h2>
+    <div class="card">
+      <div class="muted">How many players each team has on the pitch at once, including the goalkeeper. This is the limit for lineups.
+        Full-size soccer is 11-a-side; small-sided leagues often play 5, 7 or 9.</div>
+      <div class="stepper">
+        <button onclick="setOnField(-1)" aria-label="Fewer players" ${onFieldMax() <= 3 ? 'disabled' : ''}>−</button>
+        <b>${onFieldMax()}</b>
+        <button onclick="setOnField(1)" aria-label="More players" ${onFieldMax() >= 11 ? 'disabled' : ''}>+</button>
+      </div>
+    </div>
+
+    ${db.minRosterReady ? `<h2>Minimum roster</h2>
+    <div class="card">
+      <div class="muted">Teams registered by team admins need at least this many players. Teams you add yourself aren’t affected.</div>
+      <div class="stepper">
+        <button onclick="setMinRoster(-1)" aria-label="Fewer players" ${db.settings.minRoster <= 0 ? 'disabled' : ''}>−</button>
+        <b>${db.settings.minRoster || 'None'}</b>
+        <button onclick="setMinRoster(1)" aria-label="More players" ${db.settings.minRoster >= 60 ? 'disabled' : ''}>+</button>
+      </div>
+    </div>` : ''}
+
+    ${db.detailsReady ? `<h2>Match length</h2>
+    <div class="card">
+      <div class="muted">Two halves of this length in total. The match clock shows stoppage time (like 45+2') once a half runs over.
+        Changing it doesn’t affect matches already started.</div>
+      <select style="margin-top:10px" onchange="setTimeCap(this.value)">
+        ${[40, 50, 60, 70, 80, 90].map(m => `<option value="${m}" ${(db.settings.timeCap || 90) === m ? 'selected' : ''}>${m} minutes (2 × ${m / 2})</option>`).join('')}
+      </select>
+    </div>` : ''}
+
+    <h2>League border</h2>
+    <div class="card row" style="${borderStyle(league.border_colors)}">
+      <b>${esc(league.name)}</b>
+      <button class="small" onclick="openBorderEditor()">🎨 Edit border</button>
+    </div>
+
+    ${db.seasonsReady && activeSeason() ? (() => {
+      const s = activeSeason(), games = db.games.filter(inActiveSeason);
+      const played = games.filter(g => g.status === 'final').length, live = games.filter(g => g.status === 'live').length;
+      return `<h2>Season</h2>
+      <div class="card">
+        <b>${esc(s.name)}</b> <span class="muted">· started ${new Date(s.started_at).toLocaleDateString()} · ${played} game${played === 1 ? '' : 's'} played</span>
+        <p class="muted">When the season is over, start the next one. ${esc(s.name)}’s stats are kept (and count toward all-time stats); it just can’t be changed anymore.</p>
+        ${live ? `<p class="msg error">Finish or delete the ${live} live game${live === 1 ? '' : 's'} first.</p>` : ''}
+        <button class="primary" style="width:100%" ${live ? 'disabled' : ''} onclick="openNewSeason()">🏁 End ${esc(s.name)} and start a new season</button>
+      </div>
+      <a class="card game-link" href="#/hof"><span><b>🏆 Hall of Fame</b><br><span class="muted">${db.hof.length} inducted · induct players at the end of each season</span></span><span class="muted">→</span></a>`;
+    })() : ''}
+
+    ${publicLinkCard()}
+
+    <h2>Export</h2>
+    <div class="card export-buttons">
+      <span class="muted">Spreadsheet (CSV) files that open in Excel, Google Sheets or Numbers.</span>
+      <button class="small" onclick="withAllSeasons(() => exportGames(true))">⬇ All games, every season</button>
+      <button class="small" onclick="exportGames(false)">⬇ This season’s games</button>
+      <button class="small" onclick="exportStandings()">⬇ Standings</button>
+      <button class="small" onclick="leaderScope = 'season'; exportPlayerStats()">⬇ Player stats, this season</button>
+      ${db.seasonsReady ? '<button class="small" onclick="withAllSeasons(() => { leaderScope = \'all\'; exportPlayerStats(); leaderScope = \'season\'; })">⬇ Player stats, all time</button>' : ''}
+    </div>
+
+    <h2>Admins</h2>
+    <div class="card" id="admin-list"><span class="muted">Loading…</span></div>
+
+    <h2>League password</h2>
+    <div class="card">
+      <p class="muted" style="margin-top:0">Anyone with the password can join as an admin. Change it if it’s been shared too widely;
+        current admins stay admins (remove them above if needed).</p>
+      <form class="row" onsubmit="changeLeaguePassword(event)">
+        <input id="new-pw" type="password" placeholder="New password (4+ characters)" minlength="4" required autocomplete="new-password">
+        <button class="primary small">Change</button>
+      </form>
+      <div class="msg" id="pw-msg"></div>
+    </div>
+
+    <h2>Danger zone</h2>
+    <div class="card danger-zone">
+      <div class="row"><span><b>Leave ${esc(league.name)}</b><br><span class="muted">You’ll stop being an admin. You can rejoin with the password.</span></span>
+        <button class="small" onclick="removeAdmin('${me()}', true)">Leave</button></div>
+      <div class="row" style="margin-top:14px"><span><b>Delete ${esc(league.name)}</b><br><span class="muted">Permanently deletes every season, team, game and stat.</span></span>
+        <button class="small danger" onclick="deleteLeague()">Delete</button></div>
+    </div>`;
+  loadAdmins();
+}
+
+// ---------- Admins, password, leaving and deleting ----------
+async function loadAdmins() {
+  const box = document.getElementById('admin-list');
+  const { data, error } = await sb.from('league_admins').select('user_id, user_email, joined_at').eq('league_id', league.id).order('joined_at');
+  if (!document.getElementById('admin-list')) return;
+  if (error) { box.innerHTML = `<span class="msg error">${esc(dbErrorText(error))}</span>`; return; }
+  adminsCache = data;
+  box.innerHTML = data.map(a => {
+    const creator = a.user_id === db.createdBy, self = a.user_id === me();
+    return `<div class="claim-row"><span><b>${esc(a.user_email || 'Unknown email')}</b>
+        ${self ? '<span class="badge you">YOU</span>' : ''} ${creator ? '<span class="badge">CREATOR</span>' : ''}
+        <div class="muted" style="font-size:12px">Admin since ${new Date(a.joined_at).toLocaleDateString()}</div></span>
+      ${!self && !creator ? `<button class="small" onclick="removeAdmin('${a.user_id}', false)">Remove</button>` : ''}</div>`;
+  }).join('') + (data.length === 1 ? '<p class="muted" style="margin-bottom:0">You’re the only admin. Share the league password with anyone who should help run the league.</p>' : '');
+}
+
+let adminsCache = [];
+async function removeAdmin(userId, self) {
+  const email = adminsCache.find(a => a.user_id === userId)?.user_email || '';
+  const q = self ? `Leave ${league.name}? You’ll no longer be able to manage it.` : `Remove ${email || 'this admin'} from ${league.name}? They can rejoin only with the league password, so change it if needed.`;
+  if (!confirm(q)) return;
+  const { error } = await sb.rpc('remove_league_admin', { p_league_id: league.id, p_user_id: userId });
+  if (error) return toast(dbErrorText(error));
+  if (self) { toast(`You left ${league.name}.`); leaveLeague(); location.hash = '#/admin'; return; }
+  toast(`Removed ${email || 'the admin'}.`);
+  loadAdmins();
+}
+
+async function changeLeaguePassword(ev) {
+  ev.preventDefault();
+  const pw = document.getElementById('new-pw').value, msg = document.getElementById('pw-msg');
+  const { error } = await sb.rpc('change_league_password', { p_league_id: league.id, p_password: pw });
+  msg.classList.toggle('error', !!error);
+  msg.textContent = error ? dbErrorText(error) : 'Password changed. Share the new one with anyone who should be able to join.';
+  if (!error) document.getElementById('new-pw').value = '';
+}
+
+async function deleteLeague() {
+  const typed = prompt(`This permanently deletes ${league.name}: every season, team, player, game, stat, claim and Hall of Fame entry, for everyone. It can’t be undone.\n\nType the league name to confirm:`);
+  if (typed === null) return;
+  if (writes.length) return toast('Some changes are still saving. Try again in a moment.');
+  if (typed.trim().toLowerCase() !== league.name.trim().toLowerCase()) return toast('The name didn’t match, so nothing was deleted.');
+  // Remove the players' photos first (while we're still an admin of the league, which storage checks).
+  if (db.profilesReady) {
+    const { data: files } = await sb.storage.from('player-photos').list(league.id, { limit: 1000 });
+    if (files?.length) await sb.storage.from('player-photos').remove(files.map(f => `${league.id}/${f.name}`));
+  }
+  const { error } = await sb.rpc('delete_league', { p_league_id: league.id, p_confirm_name: typed });
+  if (error) return toast(dbErrorText(error));
+  const name = league.name;
+  leaveLeague(); location.hash = '#/admin';
+  toast(`${name} was deleted.`);
+}
+
+// ---------- New season ----------
+function openNewSeason() {
+  const s = activeSeason(), teams = db.teams.filter(inActiveSeason);
+  const scheduled = db.games.filter(g => inActiveSeason(g) && g.status === 'scheduled').length;
+  openSheet(`
+    <h3>Start a new season</h3>
+    <p class="muted">${esc(s.name)} ends and its stats are saved. ${scheduled ? `Its ${scheduled} unplayed scheduled game${scheduled === 1 ? ' is' : 's are'} removed.` : ''}</p>
+    <label class="field">Name of the new season
+      <input id="season-name" value="Season ${s.number + 1}" maxlength="60"></label>
+    <div class="options" style="margin-top:14px">
+      <button class="card option-btn" onclick="startNewSeason(false)">
+        <b>🆕 Start from scratch</b>
+        <span class="muted">No teams. When you add players, returning players can be linked by name so their all-time stats carry on.</span>
+      </button>
+      <button class="card option-btn" onclick="startNewSeason(true)" ${teams.length ? '' : 'disabled'}>
+        <b>🔁 Use the same teams</b>
+        <span class="muted">Copies all ${teams.length} team${teams.length === 1 ? '' : 's'} and their rosters. Stats start at zero; all-time stats carry on.</span>
+      </button>
+    </div>
+    <div class="msg error" id="season-msg"></div>
+    <button style="width:100%;margin-top:10px" onclick="closeSheet()">Cancel</button>`);
+}
+
+async function startNewSeason(copyTeams) {
+  const old = activeSeason(), name = document.getElementById('season-name').value.trim();
+  if (!confirm(`End ${old.name} and start ${name || 'the new season'}${copyTeams ? ' with the same teams' : ' from scratch'}? This can’t be undone.`)) return;
+  if (writes.length) return (document.getElementById('season-msg').textContent = 'Some changes are still saving. Try again in a moment.');
+  const { data, error } = await sb.rpc('start_new_season', { p_league_id: league.id, p_name: name, p_copy_teams: copyTeams });
+  if (error) return (document.getElementById('season-msg').textContent = dbErrorText(error));
+  closeSheet();
+  viewSeasonId = null; hofPicking = true; hofQuery = '';
+  dataLeagueId = null;   // reload everything (the new season, and any copied teams)
+  toast(`🏁 ${old.name} is in the books. ${data.name} has started! Induct anyone from ${old.name} into the Hall of Fame.`);
+  location.hash = '#/hof';
+  route();
+}
+
+function setOnField(delta) {
+  const n = Math.min(11, Math.max(3, onFieldMax() + delta));
+  db.settings = { ...db.settings, onField: n };
+  const leagueId = league.id;
+  persist({ rpc: 'set_league_on_field', args: { p_league_id: leagueId, p_on_field: n } });
+  renderSettings();
+}
+
+function setMinRoster(delta) {
+  const n = Math.max(0, Math.min(60, (db.settings.minRoster || 0) + delta));
+  db.settings = { ...db.settings, minRoster: n };
+  persist({ rpc: 'set_league_min_roster', args: { p_league_id: league.id, p_min: n } });
+  renderSettings();
+}
+
+// The match length is kept in the league's time_cap column (the frisbee app uses it for game time caps).
+function setTimeCap(v) {
+  const m = +v || 90;
+  db.settings = { ...db.settings, timeCap: m };
+  persist({ rpc: 'set_league_time_cap', args: { p_league_id: league.id, p_minutes: m } });
+  toast(`Matches are now ${m} minutes (2 × ${m / 2}).`);
+}
+
+function startScheduled(id) {
+  const g = game(id);
+  g.status = 'live'; g.created = Date.now(); saveGame(g);
+  location.hash = `#/game/${id}`;
+}
+
+function clearSchedule() {
+  const ids = seasonGames().filter(g => g.status === 'scheduled').map(g => g.id);
+  if (!confirm(`Remove all ${ids.length} upcoming scheduled games? Live and finished games are kept.`)) return;
+  db.games = db.games.filter(g => !ids.includes(g.id));
+  persist({ del: 'games', vals: ids });
+  renderGames();
+}
+
+// ---------- Schedule creator ----------
+const pad = n => String(n).padStart(2, '0');
+const localDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const localDateTime = d => `${localDate(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+let sched = null;          // the creator's settings, kept while you tweak them
+let schedPreview = null;   // the generated games, shown before saving
+
+// Circle-method round robin: every team plays every other team exactly once.
+// With an odd number of teams, one team sits out (a bye) each round.
+function roundRobin(ids) {
+  const t = [...ids];
+  if (t.length % 2) t.push(null);
+  const n = t.length, rounds = [], homes = {};
+  for (let r = 0; r < n - 1; r++) {
+    const games = []; let bye = null;
+    for (let i = 0; i < n / 2; i++) {
+      const x = t[i], y = t[n - 1 - i];
+      if (!x || !y) { bye = x || y; continue; }
+      // Keep home games balanced: whoever has hosted less so far is home.
+      const [h, a] = (homes[x] || 0) <= (homes[y] || 0) ? [x, y] : [y, x];
+      homes[h] = (homes[h] || 0) + 1;
+      games.push([h, a]);
+    }
+    rounds.push({ games, bye });
+    t.splice(1, 0, t.pop()); // rotate everyone except the first team
+  }
+  return rounds;
+}
+
+const flipRound = r => ({ games: r.games.map(([h, a]) => [a, h]), bye: r.bye });
+
+function shuffled(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+
+function buildRounds(s) {
+  const ids = seasonTeams().map(t => t.id);
+  const base = roundRobin(s.shuffle ? shuffled(ids) : ids);
+  if (s.type === 'single') return base;
+  if (s.type === 'double') return [...base, ...base.map(flipRound)];
+  // Set number of rounds: cycle through the round robin, swapping home/away on each repeat.
+  return Array.from({ length: s.rounds }, (_, i) =>
+    Math.floor(i / base.length) % 2 ? flipRound(base[i % base.length]) : base[i % base.length]);
+}
+
+function renderSchedule() {
+  if (seasonTeams().length < 2 || !canEdit()) { location.hash = '#/games'; return; }
+  sched = sched || { type: 'single', rounds: 8, shuffle: false, start: localDate(new Date()), time: '18:00', every: 7, fields: 1, length: 90,
+    dayMode: 'every', days: [3, 5], timeMode: 'start', slots: ['20:00', '21:00', '22:00', '23:00'], balance: true };
+  // A preview from earlier is dropped if its teams have changed since (e.g. one was deleted).
+  if (schedPreview && !schedPreview.every(r => r.games.every(g => team(g.homeId) && team(g.awayId)))) schedPreview = null;
+  const n = seasonTeams().length;
+  const perRound = n % 2 ? n : n - 1;           // rounds in one full round robin
+  const single = n * (n - 1) / 2;               // games in one full round robin
+  const opt = (value, title, text) => `
+    <label class="card option">
+      <input type="radio" name="stype" value="${value}" ${sched.type === value ? 'checked' : ''} onchange="sched.type = this.value; schedPreview = null; renderSchedule()">
+      <span><b>${title}</b><div class="muted">${text}</div></span>
+    </label>`;
+  app.innerHTML = `
+    <div class="row"><h1>Schedule creator</h1><a class="btn small" href="#/games">← Games</a></div>
+    <p class="muted">${n} teams: ${seasonTeams().map(t => esc(t.name)).join(', ')}.${n % 2 ? ' With an odd number of teams, one team has a bye each round.' : ''}</p>
+
+    <h2>1. Pick a format</h2>
+    <div class="options">
+      ${opt('single', 'Single round robin', `Every team plays every other team once. ${perRound} rounds, ${single} games.`)}
+      ${opt('double', 'Double round robin', `Every team plays every other team twice, with home and away swapped. ${perRound * 2} rounds, ${single * 2} games.`)}
+      ${opt('rounds', 'Set number of rounds', 'Choose how many rounds (e.g. weeks) your season has. Matchups rotate through the round robin so teams face each other as evenly as possible.')}
+    </div>
+    ${sched.type === 'rounds' ? `<label class="field" style="margin-top:10px">Number of rounds
+      <input type="number" min="1" max="100" value="${sched.rounds}" oninput="sched.rounds = +this.value; schedChanged()"></label>` : ''}
+    <label class="card option" style="margin-top:10px">
+      <input type="checkbox" ${sched.shuffle ? 'checked' : ''} onchange="sched.shuffle = this.checked; schedChanged()">
+      <span><b>Shuffle matchups</b><div class="muted">Randomize who plays whom in each round instead of using the team list order.</div></span>
+    </label>
+
+    <h2>2. Game days</h2>
+    <div class="cat-tabs">
+      <button class="${sched.dayMode === 'every' ? 'on' : ''}" onclick="sched.dayMode = 'every'; schedPreview = null; renderSchedule()">Every few days</button>
+      <button class="${sched.dayMode === 'weekdays' ? 'on' : ''}" onclick="sched.dayMode = 'weekdays'; schedPreview = null; renderSchedule()">Certain days of the week</button>
+    </div>
+    <div class="card grid2">
+      <label class="field">${sched.dayMode === 'weekdays' ? 'Season starts' : 'First game date'}<input type="date" value="${sched.start}" oninput="sched.start = this.value; schedChanged()"></label>
+      ${sched.dayMode === 'every'
+        ? `<label class="field">Days between rounds<input type="number" min="1" max="60" value="${sched.every}" oninput="sched.every = +this.value; schedChanged()"></label>`
+        : `<div class="field">Game days<div class="weekday-picker">${WEEKDAYS.map((d, i) => `<button class="${sched.days.includes(i) ? 'on' : ''}"
+            onclick="toggleWeekday(${i})">${d}</button>`).join('')}</div></div>`}
+    </div>
+    ${sched.dayMode === 'weekdays' ? '<p class="muted">Each game day holds one round, in date order from the start date.</p>' : ''}
+
+    <h2>3. Times and fields</h2>
+    <div class="cat-tabs">
+      <button class="${sched.timeMode === 'start' ? 'on' : ''}" onclick="sched.timeMode = 'start'; schedPreview = null; renderSchedule()">Start time + game length</button>
+      <button class="${sched.timeMode === 'slots' ? 'on' : ''}" onclick="sched.timeMode = 'slots'; schedPreview = null; renderSchedule()">Set time slots</button>
+    </div>
+    <div class="card grid2">
+      ${sched.timeMode === 'start' ? `
+        <label class="field">First game time<input type="time" value="${sched.time}" oninput="sched.time = this.value; schedChanged()"></label>
+        <label class="field">Game length (minutes)<input type="number" min="10" max="300" step="5" value="${sched.length}" oninput="sched.length = +this.value; schedChanged()"></label>` : `
+        <div class="field" style="grid-column:1/-1">Time slots
+          <div class="slot-chips">${[...sched.slots].sort().map(t => `<span class="slot-chip">${fmtSlot(t)}
+            <button class="link-btn" onclick="removeSlot('${t}')" aria-label="Remove ${fmtSlot(t)}">✕</button></span>`).join('') || '<span class="muted">No times yet</span>'}</div>
+          <div class="row" style="margin-top:6px"><input type="time" id="new-slot" value="${nextSlot()}"><button class="small" onclick="addSlot()">+ Add time</button></div>
+        </div>`}
+      <label class="field">Fields available<input type="number" min="1" max="20" value="${sched.fields}" oninput="sched.fields = +this.value; schedChanged(); renderSlotNote()"></label>
+    </div>
+    <p class="muted" id="slot-note">${slotNote()}</p>
+    <label class="card option">
+      <input type="checkbox" ${sched.balance ? 'checked' : ''} onchange="sched.balance = this.checked; schedChanged()">
+      <span><b>Spread time slots evenly</b><div class="muted">Rotate teams through the times so nobody always plays the earliest or the latest game.</div></span>
+    </label>
+
+    <div class="msg error" id="schedMsg"></div>
+    <button class="primary" style="width:100%" onclick="previewSchedule()">Preview schedule</button>
+    <div id="preview">${schedPreview ? previewHtml() : ''}</div>`;
+}
+
+// ----- Game days and time slots -----
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const fmtSlot = t => new Date(`2000-01-01T${t}`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const gamesPerRound = () => Math.floor(seasonTeams().length / 2);
+function toggleWeekday(i) {
+  sched.days = sched.days.includes(i) ? sched.days.filter(d => d !== i) : [...sched.days, i].sort();
+  schedPreview = null; renderSchedule();
+}
+function addSlot() {
+  const t = document.getElementById('new-slot').value;
+  if (t && !sched.slots.includes(t)) sched.slots = [...sched.slots, t].sort();
+  schedPreview = null; renderSchedule();
+}
+function removeSlot(t) { sched.slots = sched.slots.filter(x => x !== t); schedPreview = null; renderSchedule(); }
+// Suggest the next time on the hour after the latest slot.
+function nextSlot() {
+  const last = [...sched.slots].sort().at(-1);
+  if (!last) return '18:00';
+  const h = (+last.slice(0, 2) + 1) % 24;
+  return `${String(h).padStart(2, '0')}:${last.slice(3)}`;
+}
+// How many games fit on a game day, compared with how many a round needs.
+function slotNote() {
+  const need = gamesPerRound();
+  if (sched.timeMode === 'start') return 'If a round has more games than fields, the extra games start one game length later.';
+  const fit = sched.slots.length * (sched.fields || 0);
+  return fit < need
+    ? `<b style="color:var(--bad)">A game day fits ${fit} game${fit === 1 ? '' : 's'} (${sched.slots.length} time${sched.slots.length === 1 ? '' : 's'} × ${sched.fields} field${sched.fields === 1 ? '' : 's'}), but each round has ${need}. Add a time or a field.</b>`
+    : `A game day fits ${fit} game${fit === 1 ? '' : 's'}; each round has ${need}.${fit > need ? ' Some slots will be empty each day.' : ''}`;
+}
+function renderSlotNote() { const el = document.getElementById('slot-note'); if (el) el.innerHTML = slotNote(); }
+
+// The date of each round: every N days, or the chosen weekdays in order from the start date.
+function roundDates(count, s) {
+  const out = [], d = new Date(`${s.start}T00:00`);
+  if (s.dayMode === 'every') {
+    for (let i = 0; i < count; i++) { const x = new Date(d); x.setDate(d.getDate() + i * s.every); out.push(x); }
+  } else {
+    for (let guard = 0; out.length < count && guard < 3660; guard++) {
+      if (s.days.includes(d.getDay())) out.push(new Date(d));
+      d.setDate(d.getDate() + 1);
+    }
+  }
+  return out;
+}
+
+// Put a round's games into time slots. With balancing on, each game goes where its two teams have played least
+// so far (tried in many orders, keeping the most even), so nobody is always the early or late game.
+function assignSlots(games, slots, fields, counts, balance) {
+  const capacity = () => Object.fromEntries(slots.map(s => [s, fields]));
+  const place = order => {
+    const left = capacity(), out = [];
+    let cost = 0;
+    for (const gi of order) {
+      const [h, a] = games[gi];
+      const options = slots.filter(s => left[s] > 0);
+      const score = s => (counts[h]?.[s] || 0) ** 2 + (counts[a]?.[s] || 0) ** 2;
+      const s = balance ? options.reduce((best, x) => (score(x) < score(best) ? x : best)) : options[0];
+      cost += score(s); left[s]--;
+      out[gi] = { slot: s, field: fields - left[s] };
+    }
+    return { out, cost };
+  };
+  let best = place(games.map((_, i) => i));
+  if (balance) for (let k = 0; k < 80; k++) {
+    const order = shuffled(games.map((_, i) => i)), r = place(order);
+    if (r.cost < best.cost) best = r;
+  }
+  best.out.forEach((p, gi) => { for (const t of games[gi]) { counts[t] = counts[t] || {}; counts[t][p.slot] = (counts[t][p.slot] || 0) + 1; } });
+  return best.out;
+}
+
+// Any settings change makes the current preview out of date.
+function schedChanged() {
+  schedPreview = null;
+  const p = document.getElementById('preview');
+  if (p) p.innerHTML = '';
+}
+
+function previewSchedule() {
+  const s = sched, err = t => { document.getElementById('schedMsg').textContent = t; };
+  if (!s.start) return err('Pick the first game date.');
+  if (s.dayMode === 'every' && !(s.every >= 1)) return err('Days between rounds must be at least 1.');
+  if (s.dayMode === 'weekdays' && !s.days.length) return err('Pick at least one game day.');
+  if (!(s.fields >= 1 && s.fields <= 20)) return err('Fields available must be between 1 and 20.');
+  if (s.timeMode === 'start' && !s.time) return err('Pick a time for the first game.');
+  if (s.timeMode === 'start' && !(s.length >= 10)) return err('Game length must be at least 10 minutes.');
+  if (s.timeMode === 'slots' && !s.slots.length) return err('Add at least one time slot.');
+  if (s.timeMode === 'slots' && s.slots.length * s.fields < gamesPerRound()) return err('A game day doesn’t fit a whole round. Add a time slot or a field.');
+  if (s.type === 'rounds' && !(s.rounds >= 1 && s.rounds <= 100)) return err('Number of rounds must be between 1 and 100.');
+  err('');
+  const rounds = buildRounds(s), dates = roundDates(rounds.length, s);
+  // "Start time + game length" is turned into time slots too (start, start + length, …), so both modes can be balanced.
+  const slots = s.timeMode === 'slots' ? [...s.slots].sort() : Array.from({ length: Math.ceil(gamesPerRound() / s.fields) || 1 }, (_, k) => {
+    const [hh, mm] = s.time.split(':').map(Number), t = new Date(2000, 0, 1, hh, mm + k * s.length);
+    return `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+  });
+  // Balancing round by round is greedy, so plan the whole season several times and keep the most even
+  // (smallest gap between a team's most- and least-played time slot, then the smoothest overall).
+  const unevenness = c => {
+    const per = Object.values(c).map(t => slots.map(sl => t[sl] || 0));
+    return [Math.max(0, ...per.map(x => Math.max(...x) - Math.min(...x))), per.flat().reduce((a, x) => a + x * x, 0)];
+  };
+  let plan = null;
+  for (let attempt = 0; attempt < (s.balance ? 40 : 1); attempt++) {
+    const c = {}, placed = rounds.map(r => assignSlots(r.games, slots, s.fields, c, s.balance)), score = unevenness(c);
+    if (!plan || score[0] < plan.score[0] || (score[0] === plan.score[0] && score[1] < plan.score[1])) plan = { placed, score };
+    if (plan.score[0] <= 1) break;   // can't do better than within one game
+  }
+  schedPreview = rounds.map((r, ri) => {
+    const day = dates[ri], placed = plan.placed[ri];
+    return {
+      bye: r.bye,
+      games: r.games.map(([homeId, awayId], gi) => {
+        const [hh, mm] = placed[gi].slot.split(':').map(Number), t = new Date(day);
+        t.setHours(hh, mm, 0, 0);
+        return { id: uid(), homeId, awayId, status: 'scheduled', round: ri + 1, field: placed[gi].field,
+          when: localDateTime(t), created: Date.now(), events: [] };
+      }).sort((a, b) => a.when.localeCompare(b.when) || a.field - b.field)
+    };
+  });
+  document.getElementById('preview').innerHTML = previewHtml();
+  document.getElementById('preview').scrollIntoView({ behavior: 'smooth' });
+}
+
+function previewHtml() {
+  const games = schedPreview.flatMap(r => r.games);
+  const perTeam = {};
+  games.forEach(g => { perTeam[g.homeId] = (perTeam[g.homeId] || 0) + 1; perTeam[g.awayId] = (perTeam[g.awayId] || 0) + 1; });
+  const counts = seasonTeams().map(t => perTeam[t.id] || 0);
+  const min = Math.min(...counts), max = Math.max(...counts);
+  const existing = seasonGames().filter(g => g.status === 'scheduled').length;
+  const time = w => new Date(w).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return `
+    <h2>Preview</h2>
+    <div class="card"><b>${schedPreview.length} rounds · ${games.length} games</b>
+      <div class="muted">Each team plays ${min === max ? min : `${min}–${max}`} games.</div></div>
+    ${slotBalanceTable(games)}
+    ${schedPreview.map((r, i) => `
+      <div class="card round">
+        <h3><span>Round ${i + 1}</span><span class="muted">${new Date(r.games[0]?.when || Date.now()).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</span></h3>
+        ${r.games.map(g => `<div class="match">
+          <span><span class="dot" style="background:${teamBg(team(g.homeId))}"></span>${esc(team(g.homeId).name)}
+            <span class="muted">vs</span> <span class="dot" style="background:${teamBg(team(g.awayId))}"></span>${esc(team(g.awayId).name)}</span>
+          <span class="muted">${time(g.when)} · F${g.field}</span></div>`).join('')}
+        ${r.bye ? `<div class="match muted"><span>Bye: ${esc(team(r.bye).name)}</span></div>` : ''}
+      </div>`).join('')}
+    <div class="row" style="margin-bottom:24px">
+      ${existing ? `<button onclick="saveSchedule(false)">Add to current schedule</button>
+        <button class="primary" onclick="saveSchedule(true)">Replace current (${existing} games)</button>`
+        : '<button class="primary" onclick="saveSchedule(false)">Save schedule</button>'}
+    </div>`;
+}
+
+// How many times each team plays in each time slot, so admins can see it's fair.
+function slotBalanceTable(games) {
+  const times = [...new Set(games.map(g => g.when.slice(11)))].sort();
+  if (times.length < 2) return '';
+  const count = (tid, t) => games.filter(g => (g.homeId === tid || g.awayId === tid) && g.when.slice(11) === t).length;
+  const rows = seasonTeams().map(tm => ({ tm, c: times.map(t => count(tm.id, t)) }));
+  const spread = Math.max(...rows.map(r => Math.max(...r.c) - Math.min(...r.c)));
+  return `<div class="card">
+    <div class="chart-title">Games per time slot</div>
+    <div class="muted" style="font-size:13px;margin-bottom:6px">${spread <= 1 ? '✓ Every team plays each time slot about the same number of times.'
+      : `Some teams play one time slot up to ${spread} more times than another.`}</div>
+    <div class="table-wrap"><table>
+      <thead><tr><th class="l">Team</th>${times.map(t => `<th>${fmtSlot(t)}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(r => `<tr><td class="l"><span class="dot" style="background:${teamBg(r.tm)}"></span>${esc(r.tm.name)}</td>
+        ${r.c.map(n => `<td>${n}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table></div></div>`;
+}
+
+function saveSchedule(replace) {
+  if (replace && !confirm('Remove the current upcoming games and use this schedule instead?')) return;
+  const added = schedPreview.flatMap(r => r.games).map(g => ({ ...g, seasonId: activeSeason()?.id || null }));
+  const rows = added.map(gameRow);
+  const oldIds = replace ? seasonGames().filter(g => g.status === 'scheduled').map(g => g.id) : [];
+  db.games = db.games.filter(g => !oldIds.includes(g.id));
+  db.games.push(...added);
+  persist(oldIds.length && { del: 'games', vals: oldIds }, { upsert: 'games', rows });
+  schedPreview = null;
+  location.hash = '#/games';
+}
+
+function newGame() {
+  const homeId = document.getElementById('home').value, awayId = document.getElementById('away').value;
+  if (homeId === awayId) return alert('Pick two different teams.');
+  const g = { id: uid(), homeId, awayId, created: Date.now(), status: 'live', events: [], seasonId: activeSeason()?.id || null };
+  db.games.push(g); saveGame(g);
+  location.hash = `#/game/${g.id}`;
+}
+
+function openSheet(html) {
+  sheet.innerHTML = `<div class="backdrop" onclick="closeSheet()"></div><div class="panel">${html}</div>`;
+  sheet.classList.add('open');
+}
+function closeSheet() {
+  sheet.classList.remove('open'); sheet.innerHTML = '';
+  // Live changes that arrived while the pop-up was open.
+  if (needsRender) { needsRender = false; setTimeout(rerender); }
+}
+
+// ---------- Stat tables ----------
+function statTable(rows, cols, sortKey, onSortName) {
+  return `<div class="table-wrap"><table>
+    <thead><tr>${cols.map(c => `<th class="${c.l ? 'l' : ''} ${c.k === sortKey ? 'sorted' : ''}" ${c.title ? `title="${esc(c.title)}"` : ''}
+      ${onSortName && c.sort !== false ? `onclick="${onSortName}('${c.k}')"` : ''}>${c.h}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(r => `<tr class="${r.userId && r.userId === me() ? 'me' : ''}">${cols.map(c => `<td class="${c.l ? 'l' : ''}">${c.f ? c.f(r) : r[c.k]}</td>`).join('')}</tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+// Highest first; names A–Z; stats that can't be calculated (null) go last. Ties: goals + assists, then minutes.
+function sortRows(rows, key) {
+  return rows.sort((x, y) => {
+    if (key === 'name') return x.name.localeCompare(y.name);
+    const a = x[key], b = y[key];
+    if (a == null || b == null) return (a == null) - (b == null);
+    return b - a || (y.ga ?? 0) - (x.ga ?? 0) || (y.min ?? 0) - (x.min ?? 0);
+  });
+}
+
+// Keep the sort column valid for the current stat category.
+function sortKeyFor(key) {
+  const keys = STAT_CATS[statCat].cols.map(c => c[0]);
+  return key === 'name' || keys.includes(key) ? key : keys[0];
+}
+
+const playerNameCol = (showTeam = true) => ({
+  k: 'name', h: 'Player', l: true,
+  f: r => `<a href="#/profile/${r.id}" style="color:inherit">${showTeam ? `<span class="dot" style="background:${teamBg(r.team)}"></span>` : `<span class="muted">#${esc(r.number)}</span> `}${esc(r.name)}</a>`
+});
+const statFootnote = '<p class="muted foot">* Can’t be calculated yet (for example, no shots or minutes recorded). Minutes, starts and goalkeeper stats need lineups set before kickoff. Hover a column name to see what it means.</p>';
+
+// ---------- Box score (a match's page) ----------
+let boxTab = 'stats', boxSort = 'g';
+function sortBox(k) { boxSort = k; route(); }
+
+function renderBox(g) {
+  const an = analyze([g]), r = an.games[0] || analyzeGame(g);
+  const h = team(g.homeId), a = team(g.awayId), half = halftimeScore(g), live = g.status === 'live';
+  boxSort = sortKeyFor(boxSort);
+  const rowsFor = t => sortRows(t.players.map(p => ({ ...p, team: t, ...statsOf(an, p.id) })).filter(p => p.gp), boxSort);
+  const ts = tid => r.teams[tid] || TEAM_ZERO();
+
+  // Goals (and red cards) listed under each team, like a newspaper box score.
+  const events = tid => [...r.goals.filter(gl => gl.team === tid).map(gl => `⚽ ${esc(goalText(gl))} ${gl.min.label}`),
+    ...g.events.filter(e => e.type === 'red' && e.teamId === tid).map(e => `🟥 ${esc(player(e.playerId).name)} ${minuteAt(r.periods, e.t).label}`)];
+  const scorers = r.goals.length || g.events.some(e => e.type === 'red')
+    ? `<div class="scorers"><div>${events(h.id).join('<br>')}</div><div>${events(a.id).join('<br>')}</div></div>` : '';
+  const pens = shootoutOf(g) ? `<div class="muted">Penalties: ${esc(shootoutText(g))}</div>` : '';
+
+  // Match leaders: the top player in a few headline stats.
+  const everyone = [...rowsFor(h), ...rowsFor(a)];
+  const leaders = [['g', 'Goals'], ['a', 'Assists'], ['sh', 'Shots'], ['sv', 'Saves'], ['fc', 'Fouls']].map(([k, label]) => {
+    const best = Math.max(0, ...everyone.map(p => p[k] || 0));
+    const who = everyone.filter(p => best > 0 && p[k] === best);
+    return who.length ? [label, `${who.map(p => p.name).slice(0, 3).join(', ')}${who.length > 3 ? '…' : ''} (${best})`] : null;
+  }).filter(Boolean);
+
+  const statsTab = !playoffStatsKept(g) ? `
+    ${scoreChart(r)}
+    <p class="muted">Player stats aren’t kept for playoff matches this season (chosen when the playoffs were set up). The score and timeline are still here.</p>` : `
+    ${isPlayoff(g) && !countsInSeason(g) ? '<p class="muted">🏆 Playoff match: these stats count toward playoff stats, not the regular season.</p>' : ''}
+    ${isPractice(g) ? `<p class="muted">🏃 These stats count toward <a href="#/practice/${g.practiceTeam}">practice stats</a> only.</p>` : ''}
+    ${compareBars(h, a, [['Goals', score(g, h.id), score(g, a.id)], ['Shots', ts(h.id).sh, ts(a.id).sh], ['On target', ts(h.id).sot, ts(a.id).sot],
+      ['Corners', ts(h.id).corners, ts(a.id).corners], ['Fouls', ts(h.id).fouls, ts(a.id).fouls], ['Offsides', ts(h.id).offsides, ts(a.id).offsides],
+      ['Yellow cards', ts(h.id).yc, ts(a.id).yc], ['Red cards', ts(h.id).rc, ts(a.id).rc]])}
+    ${leaders.length ? `<div class="card"><div class="chart-title">Match leaders</div>
+      <div class="leaders-list">${leaders.map(([l, v]) => `<div><span class="muted">${l}</span><b>${esc(v)}</b></div>`).join('')}</div></div>` : ''}
+    ${scoreChart(r)}
+    ${statCatTabs('route()')}
+    ${[h, a].map(t => `<h2><span class="dot" style="background:${teamBg(t)}"></span>${esc(t.name)} · ${score(g, t.id)}</h2>
+      ${rowsFor(t).length ? `<div class="card">${statTable(rowsFor(t), statCols(playerNameCol(false)), boxSort, 'sortBox')}</div>` : '<p class="muted">No players yet.</p>'}`).join('')}
+    ${statFootnote}`;
+
+  // Who started, who came on, and who stayed on the bench.
+  const lineupsTab = [h, a].map(t => {
+    const name = id => `${esc(pname(id))}${g.events.some(e => e.type === 'goal' && e.playerId === id) ? ' ⚽' : ''}${g.events.some(e => e.type === 'red' && e.playerId === id) ? ' 🟥' : g.events.some(e => e.type === 'yellow' && e.playerId === id) ? ' 🟨' : ''}`;
+    const kick = g.events.find(e => e.type === 'kickoff'), gk = kick?.detail?.gk?.[t.id];
+    const starters = [...r.started[t.id]], subs = [...r.appeared[t.id]].filter(id => !r.started[t.id].has(id));
+    const unused = t.players.filter(p => !r.appeared[t.id].has(p.id));
+    return `<h2><span class="dot" style="background:${teamBg(t)}"></span>${esc(t.name)}</h2>
+      <div class="card">${r.lineupKnown[t.id] ? `
+        <div class="chart-title">Starting lineup</div><div class="muted">${starters.map(id => `${id === gk ? '🧤 ' : ''}${name(id)}`).join('<br>') || 'Not recorded'}</div>
+        ${subs.length ? `<div class="chart-title" style="margin-top:10px">Came on</div><div class="muted">${subs.map(id => {
+          const on = g.events.find(e => e.type === 'sub' && e.playerId === id);
+          return `${name(id)}${on ? ` · ${minuteAt(r.periods, on.t).label}${on.targetId ? ` for ${esc(player(on.targetId).name)}` : ''}` : ''}`; }).join('<br>')}</div>` : ''}
+        ${unused.length ? `<div class="chart-title" style="margin-top:10px">Didn’t play</div><div class="muted">${unused.map(p => esc(pname(p.id))).join(', ')}</div>` : ''}`
+        : '<div class="muted">No lineup was recorded for this team.</div>'}</div>`;
+  }).join('');
+
+  app.innerHTML = `
+    ${isPractice(g) ? practiceLabel(g) : ''}
+    ${live ? `
+    <div class="card scoreboard live-board">
+      <div class="team"><span class="dot" style="background:${teamBg(h)}"></span>${esc(h.name)}</div>
+      <div>
+        <div class="muted"><span class="live-dot"></span><b style="color:var(--bad)">LIVE</b></div>
+        <div class="nums">${score(g, h.id)}–${score(g, a.id)}</div>
+        ${matchClockHtml(g, matchState(g))}
+      </div>
+      <div class="team"><span class="dot" style="background:${teamBg(a)}"></span>${esc(a.name)}</div>
+    </div>
+    ${scorers}
+    <p class="muted" style="text-align:center;margin-top:-4px">Updates automatically as plays are recorded.</p>
+    <h2>Recent plays</h2><div class="card">${playLog(g, 8, 'No plays yet.')}</div>` : `
+    <div class="row" style="justify-content:space-between">
+      <h1 style="flex:1">${esc(h.name)} ${score(g, h.id)} – ${score(g, a.id)} ${esc(a.name)}</h1>
+      <span class="badge ${g.status}" style="flex:0 0 auto">${STATUS[g.status]}</span>
+    </div>
+    <div class="muted">${new Date(g.created).toLocaleString()}${half ? ` · Half time ${half[0]}–${half[1]}` : ''}</div>
+    ${pens}${scorers}`}
+    <div class="cat-tabs" style="margin-top:14px">
+      ${[['stats', 'Stats'], ['timeline', 'Timeline'], ['lineups', 'Lineups']].map(([k, label]) =>
+        `<button class="${boxTab === k ? 'on' : ''}" onclick="boxTab = '${k}'; route()">${label}</button>`).join('')}
+    </div>
+    ${boxTab === 'timeline' ? `<div class="card">${playLog(g, g.events.length, 'Nothing recorded yet.', true)}</div>`
+      : boxTab === 'lineups' ? lineupsTab : statsTab}
+    <div class="row export-row">
+      <button class="small" onclick="exportBoxScore('${g.id}')">⬇ Box score CSV</button>
+      <button class="small" onclick="exportPlays('${g.id}')">⬇ Timeline CSV</button>
+    </div>
+    ${canTrack(g) ? `<div class="row">
+      ${g.status === 'live'
+        ? `<a class="btn primary" href="#/game/${g.id}">Back to tracking</a>`
+        : `<button onclick="reopen('${g.id}')">Reopen match</button>`}
+      ${isAdmin() || isPractice(g) ? `<button onclick="deleteGame('${g.id}')">Delete ${isPractice(g) ? 'scrimmage' : 'match'}</button>` : ''}
+    </div>` : ''}`;
+}
+
+function reopen(id) { const g = game(id); g.status = 'live'; saveGame(g); location.hash = `#/game/${id}`; }
+function deleteGame(id) {
+  if (!confirm('Delete this game and all its stats? This cannot be undone.')) return;
+  const practiceTeam = game(id)?.practiceTeam;
+  db.games = db.games.filter(g => g.id !== id);
+  db.practice = db.practice.filter(g => g.id !== id);
+  persist({ del: 'games', vals: [id] });
+  location.hash = practiceTeam ? `#/practice/${practiceTeam}` : '#/games';
+}
+
+// ---------- Leaderboard ----------
+let leaderSort = 'g';
+let leaderView = 'all', leaderTeamId = null;   // 'all' players, or one 'team'
+function sortLeaders(k) { leaderSort = k; renderLeaders(); }
+
+let leaderScope = 'season';   // 'season' (the one being viewed) or 'all' (every season added up, per person)
+function pickLeaderSeason(v) {
+  if (v === 'all') leaderScope = 'all'; else { leaderScope = 'season'; viewSeasonId = v; }
+  route();   // loads the seasons it needs first
+}
+
+let leaderPhase = 'season';   // 'season' or 'playoffs' (when playoff stats are kept separately)
+function renderLeaders() {
+  if (leaderScope === 'all' && db.seasonsReady) return renderAllTimeLeaders();
+  const sid = viewSeason()?.id, playoffTab = db.playoffsReady && hasPlayoffTab(sid);
+  if (!playoffTab) leaderPhase = 'season';
+  const teams = seasonTeams(), games = seasonGames().filter(leaderPhase === 'playoffs' ? countsInPlayoffs : countsInSeason);
+  const an = analyze(games);
+  // "Teams" view: pick a team (defaults to your own claimed team, else the first one).
+  if (leaderView === 'team' && !teams.some(x => x.id === leaderTeamId)) leaderTeamId = teams.find(x => x.players.some(p => p.userId === me()))?.id || teams[0]?.id;
+  const t = leaderView === 'team' ? team(leaderTeamId) : null;
+  leaderSort = sortKeyFor(leaderSort);
+  const rows = sortRows((t ? [t] : teams).flatMap(tm => tm.players.map(p => ({ ...p, team: tm, ...statsOf(an, p.id) }))), leaderSort);
+  const played = games.filter(g => g.status !== 'scheduled' && (!t || g.homeId === t.id || g.awayId === t.id));
+  const ts = t && an.teams[t.id];
+  const db_teams = teams;
+  app.innerHTML = `
+    <div class="row"><h1>Leaders</h1>${db.seasonsReady ? '<a class="btn small" href="#/hof">🏆 Hall of Fame</a>' : ''}
+      <button class="small" onclick="exportPlayerStats()" title="Download as a spreadsheet">⬇ CSV</button></div>
+    ${seasonPicker('pickLeaderSeason', [['all', 'All time', false]])}
+    ${playoffTab ? `<div class="cat-tabs phase-tabs">
+      <button class="${leaderPhase === 'season' ? 'on' : ''}" onclick="leaderPhase = 'season'; renderLeaders()">${playoffStatsMode(sid) === 'both' ? 'Season (with playoffs)' : 'Regular season'}</button>
+      <button class="${leaderPhase === 'playoffs' ? 'on' : ''}" onclick="leaderPhase = 'playoffs'; renderLeaders()">🏆 Playoffs</button>
+    </div>` : ''}
+    <div class="tabs leader-tabs">
+      <button class="${t ? '' : 'on'}" onclick="leaderView = 'all'; renderLeaders()">All</button>
+      <button class="${t ? 'on' : ''}" onclick="leaderView = 'team'; renderLeaders()">Teams</button>
+    </div>
+    ${leaderView === 'team' ? (db_teams.length ? `
+      <div class="team-chips">${db_teams.map(x => `
+        <button class="${x.id === t.id ? 'on' : ''}" style="--c:${esc(x.color)}"
+          onclick="leaderTeamId = '${x.id}'; renderLeaders()"><span class="dot" style="background:${teamBg(x)}"></span>${esc(x.name)}</button>`).join('')}
+      </div>
+      <a class="card game-link" href="#/team/${t.id}">
+        <span><b><span class="dot" style="background:${teamBg(t)}"></span>${esc(t.name)}</b>
+          <span class="muted">· ${ts ? `W${ts.w} D${ts.d} L${ts.l} · ${ts.gf} scored, ${ts.ga} conceded` : 'no matches yet'}</span></span>
+        <span class="muted">Team stats →</span></a>` : '<p class="muted">No teams yet.</p>') : ''}
+    <p class="muted">${played.length} match${played.length === 1 ? '' : 'es'} played. Tap a column to sort, or a name to see that player’s matches.</p>
+    ${statCatTabs('renderLeaders()')}
+    ${rows.length ? `<div class="card">${statTable(rows, statCols(playerNameCol()), leaderSort, 'sortLeaders')}</div>`
+      : t ? '<p class="muted">This team has no players yet.</p>' : ''}
+    ${statFootnote}`;
+}
+
+// Every season added up, one row per person (their latest name and team).
+function renderAllTimeLeaders() {
+  const people = allTimeStats();
+  leaderSort = sortKeyFor(leaderSort);
+  const byPerson = {};
+  for (const p of allPlayers()) byPerson[p.personId] = [...(byPerson[p.personId] || []), p];
+  const rows = sortRows(Object.entries(byPerson).map(([personId, entries]) => {
+    const latest = entries.sort((a, b) => (db.seasons.find(s => s.id === b.team.seasonId)?.number || 0) - (db.seasons.find(s => s.id === a.team.seasonId)?.number || 0))[0];
+    return { ...latest, seasons: new Set(entries.map(e => e.team.seasonId)).size, ...(people[personId] || finishPlayer(ZERO())),
+      inHof: db.hof.some(h => h.person_id === personId) };
+  }), leaderSort);
+  const nameCol = { k: 'name', h: 'Player', l: true, f: r => `<a href="#/profile/${r.id}" style="color:inherit">${r.inHof ? '🏆 ' : ''}${esc(r.name)}</a>
+    <div class="muted" style="font-size:12px">${r.seasons} season${r.seasons === 1 ? '' : 's'}</div>` };
+  app.innerHTML = `
+    <div class="row"><h1>Leaders</h1><a class="btn small" href="#/hof">🏆 Hall of Fame</a>
+      <button class="small" onclick="exportPlayerStats()" title="Download as a spreadsheet">⬇ CSV</button></div>
+    ${seasonPicker('pickLeaderSeason', [['all', 'All time', true]])}
+    <p class="muted">All-time stats across ${db.seasons.length} season${db.seasons.length === 1 ? '' : 's'}. Players linked across seasons are added up as one person.</p>
+    ${statCatTabs('renderLeaders()')}
+    ${rows.length ? `<div class="card">${statTable(rows, statCols(nameCol), leaderSort, 'sortLeaders')}</div>` : '<p class="muted">No players yet.</p>'}
+    ${statFootnote}`;
+}
+
+// ---------- Hall of Fame ----------
+let hofPicking = false, hofQuery = '';
+
+function renderHallOfFame() {
+  if (!db.seasonsReady) { location.hash = '#/leaders'; return; }
+  const people = allTimeStats();
+  const card = h => {
+    const s = people[h.person_id] || finishPlayer(ZERO()), entries = personEntries(h.person_id), latest = entries.at(-1);
+    return `<div class="card hof-card">
+      <div class="row"><span class="hof-trophy">${latest ? avatar(latest, 48) : '🏆'}</span>
+        <span style="flex:1"><b>${latest ? `<a href="#/profile/${latest.id}" style="color:inherit">${esc(h.name)}</a>` : esc(h.name)}</b>
+          <div class="muted" style="font-size:13px">Inducted${h.season_id ? ` after ${esc(seasonName(h.season_id))}` : ''} ·
+            ${entries.length} season${entries.length === 1 ? '' : 's'}${latest ? ` · ${esc(latest.team.name)}` : ''}</div></span>
+        ${isAdmin() ? `<button class="small" onclick="removeFromHof('${h.id}')">Remove</button>` : ''}</div>
+      ${h.note ? `<p class="hof-note">“${esc(h.note)}”</p>` : ''}
+      <div class="hof-stats">${[['Apps', s.gp], ['Goals', s.g], ['Assists', s.a], ...(s.gkMin ? [['Clean sheets', s.cs]] : []), ['Minutes', Math.round(s.min)]]
+        .map(([k, v]) => `<span><b>${v}</b>${k}</span>`).join('')}</div>
+    </div>`;
+  };
+  // Admins pick inductees from everyone who has played, most all-time goals + assists first.
+  const candidates = () => {
+    const seen = new Set(db.hof.map(h => h.person_id)), latest = {};
+    for (const p of allPlayers()) {
+      const num = db.seasons.find(s => s.id === p.team.seasonId)?.number || 0;
+      if (!seen.has(p.personId) && (!latest[p.personId] || num > latest[p.personId].num)) latest[p.personId] = { ...p, num };
+    }
+    const q = hofQuery.trim().toLowerCase();
+    return Object.values(latest).filter(p => !q || p.name.toLowerCase().includes(q))
+      .map(p => ({ ...p, s: people[p.personId] || finishPlayer(ZERO()) }))
+      .sort((a, b) => b.s.ga - a.s.ga || b.s.cs - a.s.cs || b.s.gp - a.s.gp).slice(0, 40);
+  };
+  app.innerHTML = `
+    <div class="row"><h1>🏆 Hall of Fame</h1><a class="btn small" href="#/leaders">← Leaders</a></div>
+    <p class="muted">${esc(league.name)}’s greatest players, with their all-time stats.</p>
+    ${db.hof.length ? [...db.hof].reverse().map(card).join('') : '<div class="card muted">No one has been inducted yet.</div>'}
+    ${isAdmin() ? (hofPicking ? `
+      <h2>Induct a player</h2>
+      <input id="hof-q" placeholder="Search players" value="${esc(hofQuery)}" autocomplete="off"
+        oninput="hofQuery = this.value; renderHallOfFame(); const i = document.getElementById('hof-q'); i.focus(); i.setSelectionRange(i.value.length, i.value.length)">
+      <div class="card" style="margin-top:10px">${candidates().map(p => `
+        <div class="claim-row"><span><b>${esc(p.name)}</b> <span class="muted">· ${esc(p.team.name)} · ${esc(seasonName(p.team.seasonId))}</span>
+          <div class="muted" style="font-size:12px">All time: ${p.s.gp} apps · ${p.s.g} G · ${p.s.a} A${p.s.cs ? ` · ${p.s.cs} clean sheets` : ''}</div></span>
+          <button class="small primary" onclick="induct('${p.personId}')">Induct</button></div>`).join('') || '<div class="muted">No players match.</div>'}
+      </div>
+      <button style="width:100%" onclick="hofPicking = false; renderHallOfFame()">Done</button>`
+    : '<button class="primary" style="width:100%;margin-top:6px" onclick="hofPicking = true; renderHallOfFame()">+ Induct players</button>') : ''}`;
+}
+
+function induct(personId) {
+  const latest = personEntries(personId).at(-1);
+  const note = prompt(`Induct ${latest.name} into the Hall of Fame.\n\nAdd a short note (optional), e.g. “3× league MVP”:`, '');
+  if (note === null) return;
+  const archived = db.seasons.filter(s => s.status === 'archived').at(-1);
+  const row = { id: uid(), league_id: league.id, person_id: personId, name: latest.name,
+    season_id: archived?.id || activeSeason()?.id || null, note: note.trim().slice(0, 280) || null, inducted_at: new Date().toISOString() };
+  db.hof.push(row);
+  persist({ upsert: 'hall_of_fame', rows: [row] });
+  toast(`🏆 ${latest.name} is in the Hall of Fame!`);
+  renderHallOfFame();
+}
+
+function removeFromHof(id) {
+  const h = db.hof.find(x => x.id === id);
+  if (!confirm(`Remove ${h.name} from the Hall of Fame?`)) return;
+  db.hof = db.hof.filter(x => x.id !== id);
+  persist({ del: 'hall_of_fame', vals: [id] });
+  renderHallOfFame();
+}
+
+// ---------- Team stats page ----------
+let teamSort = 'g';
+function sortTeam(k) { teamSort = k; route(); }
+
+function renderTeamPage(tid, tab = 'season') {
+  const t = db.teams.find(x => x.id === tid);
+  if (!t) { location.hash = '#/teams'; return; }
+  if (tab === 'practice') {   // practice scrimmages (practice.js)
+    if (!canSeePractice(tid)) { location.hash = `#/team/${tid}`; return; }
+    app.innerHTML = `
+      <div class="row"><h1><span class="dot" style="background:${teamBg(t)}"></span>${esc(t.name)}</h1>
+        <a class="btn small" href="#/teams">← Teams</a></div>
+      ${teamPageTabs(tid, 'practice')}
+      ${practiceTabHtml(t)}`;
+    return;
+  }
+  const games = db.games.filter(g => g.homeId === tid || g.awayId === tid);
+  const an = analyze(games.filter(countsInSeason));   // playoff games count only if the season's playoff-stats choice says so
+  const ts = an.teams[tid] || { ...TEAM_ZERO(), w: 0, d: 0, l: 0, gp: 0 };
+  const diff = ts.gf - ts.ga, per = v => (ts.gp ? (v / ts.gp).toFixed(1) : '*');
+  teamSort = sortKeyFor(teamSort);
+  const rows = sortRows(t.players.map(p => ({ ...p, team: t, ...statsOf(an, p.id) })), teamSort);
+  const flows = an.flows.filter(f => t.players.some(p => p.id === f.g));
+  const played = games.filter(g => g.status !== 'scheduled').sort((x, y) => y.created - x.created);
+  const results = an.games.filter(r => r.g.homeId === tid || r.g.awayId === tid);
+  app.innerHTML = `
+    <div class="row"><h1><span class="dot" style="background:${teamBg(t)}"></span>${esc(t.name)}</h1>
+      <a class="btn small" href="#/leaders">← Leaders</a></div>
+    ${teamPageTabs(tid, 'season')}
+    <p class="muted">${ts.gp} match${ts.gp === 1 ? '' : 'es'} played</p>
+    ${tiles([
+      ['Record', `W${ts.w} D${ts.d} L${ts.l}`, `${ts.w * 3 + ts.d} points`],
+      ['Goals', `${ts.gf}–${ts.ga}`, `${diff > 0 ? '+' : ''}${diff} goal difference`],
+      ['Clean sheets', ts.cs],
+      ['Shots per match', per(ts.sh), `${per(ts.sot)} on target`],
+      ['Shot accuracy', fmtPct(ts.sh ? ts.sot / ts.sh : null), 'On target ÷ shots'],
+      ['Conversion', fmtPct(ts.sh ? ts.g / ts.sh : null), 'Goals ÷ shots (not counting own goals)'],
+      ['Corners per match', per(ts.corners)],
+      ['Cards', `${ts.yc} 🟨 ${ts.rc} 🟥`, `${ts.fouls} fouls`]
+    ])}
+    ${goalTimesChart(results, tid)}
+    ${comboList(flows)}
+    <h2>Player stats</h2>
+    ${statCatTabs('route()')}
+    ${rows.length ? `<div class="card">${statTable(rows, statCols(playerNameCol(false)), teamSort, 'sortTeam')}</div>` : '<p class="muted">No players yet.</p>'}
+    ${statFootnote}
+    <h2>Matches</h2>
+    ${played.length ? played.map(gameCard).join('') : '<p class="muted">No matches yet.</p>'}`;
+}
+
+// ---------- Teams & rosters ----------
+// A draft copy of the team being edited. Changes only reach db when Save is tapped.
+let editing = null;
+
+function renderTeams() {
+  const teams = seasonTeams(), edit = canEdit();
+  app.innerHTML = `
+    <h1>Teams</h1>
+    ${seasonPicker('pickSeason')}
+    ${viewingPast() ? `<div class="card past-season">📚 ${esc(viewSeason().name)} is finished, so its teams can’t be changed.</div>` : ''}
+    ${isTeamMode() && !edit ? '<p class="muted">You can edit the teams you manage. Other teams are read-only.</p>' : ''}
+    ${teams.length ? '' : `<p class="muted">No teams yet.${edit ? ' Add your first team below.' : ''}</p>`}
+    ${teams.map(t => editing && editing.id === t.id ? teamEditor(editing) : teamCard(t, managesTeam(t.id))).join('')}
+    ${edit ? `<div class="card">
+      <div class="muted" style="margin-bottom:8px">Add a team</div>
+      <div class="row">
+        <input id="tn" placeholder="Team name">
+        <input id="tc" type="color" value="#f39c12" aria-label="Main colour">
+        ${db.color2Ready ? '<input id="tc2" type="color" value="#ffffff" aria-label="Second colour" style="display:none">' : ''}
+        <button class="primary" style="flex:0 0 auto" onclick="addTeam()">Add</button>
+      </div>
+      ${db.color2Ready ? `<label class="color2-toggle"><input type="checkbox" id="tc2-on"
+        onchange="document.getElementById('tc2').style.display = this.checked ? '' : 'none'"> Two colours</label>` : ''}
+    </div>
+    <button onclick="resetAll()" style="width:100%">Replace this season’s teams with sample teams</button>` : ''}`;
+}
+
+function teamCard(t, edit = true) {
+  return `
+    <div class="card">
+      <div class="row" style="margin-bottom:6px">
+        <h2 style="margin:0;flex:1"><a href="#/team/${t.id}" style="color:inherit"><span class="dot" style="background:${teamBg(t)}"></span>${esc(t.name)}</a></h2>
+        ${edit ? `<button class="small" onclick="editTeam('${t.id}')">Edit</button>` : ''}
+        ${edit && isAdmin() ? `<button class="small danger" onclick="deleteTeamById('${t.id}')">Delete</button>` : ''}
+      </div>
+      ${teamAdminsLine(t)}
+      ${t.players.length ? `<ul class="roster">${t.players.map(p => `
+        <li><a href="#/profile/${p.id}" class="roster-name">${avatar({ ...p, team: t }, 28)}<span class="muted">#${esc(p.number)}</span> ${esc(p.name)}</a>
+          ${p.userId ? `<span class="row" style="flex:0 0 auto">
+            <span class="muted claimed" title="Claimed">✓ ${esc(claimedBy(p.id) || 'Claimed')}</span>
+            ${isAdmin() ? `<button class="small" onclick="releasePlayer('${p.id}')">Unlink</button>` : ''}</span>` : ''}</li>`).join('')}
+      </ul>` : '<div class="muted">No players yet. Tap Edit to add some.</div>'}
+    </div>`;
+}
+
+function teamEditor(t) {
+  return `
+    <div class="card" style="border:2px solid var(--accent)">
+      <div class="muted" style="margin-bottom:6px">Team name and colour</div>
+      <div class="row">
+        <input value="${esc(t.name)}" placeholder="Team name" maxlength="40" oninput="editing.name = this.value">
+        <input type="color" value="${esc(t.color)}" oninput="editing.color = this.value; previewTeamColor()" aria-label="Main colour">
+        ${db.color2Ready && t.color2 ? `<input type="color" value="${esc(t.color2)}" oninput="editing.color2 = this.value; previewTeamColor()" aria-label="Second colour">` : ''}
+      </div>
+      ${db.color2Ready ? `<label class="color2-toggle">
+        <input type="checkbox" ${t.color2 ? 'checked' : ''} onchange="editing.color2 = this.checked ? (editing.color2 || '#ffffff') : null; renderTeams()">
+        Two colours <span class="dot big-dot" id="team-color-preview" style="background:${teamBg(t)}"></span></label>` : ''}
+      <div class="muted" style="margin:16px 0 6px">Players</div>
+      <ul class="roster">${t.players.map((p, i) => `
+        <li class="row">
+          <input value="${esc(p.number)}" placeholder="#" inputmode="numeric" style="flex:0 0 64px"
+            oninput="editing.players[${i}].number = this.value">
+          <input value="${esc(p.name)}" placeholder="Player name" oninput="editing.players[${i}].name = this.value">
+          <button class="small" onclick="draftRemovePlayer(${i})">Remove</button>
+        </li>`).join('')}
+      </ul>
+      <div class="row">
+        <input id="new-num" placeholder="#" inputmode="numeric" style="flex:0 0 64px">
+        <input id="new-name" placeholder="New player name" autocomplete="off"
+          oninput="suggestPlayers(this.value)" onkeydown="if (event.key === 'Enter') draftAddPlayer()">
+        <button class="small" onclick="draftAddPlayer()">Add</button>
+      </div>
+      <div id="suggest"></div>
+      <div class="row" style="margin-top:18px">
+        ${isAdmin() ? '<button onclick="deleteTeam()">Delete team</button>' : ''}
+        <button onclick="cancelEdit()">Cancel</button>
+        <button class="primary" onclick="saveTeam()">Save</button>
+      </div>
+    </div>`;
+}
+
+function previewTeamColor() {
+  const el = document.getElementById('team-color-preview');
+  if (el) el.style.background = teamBg(editing);
+}
+
+function editTeam(id) {
+  if (editing && editing.id !== id && !confirm(`Discard your unsaved changes to ${team(editing.id).name}?`)) return;
+  editing = structuredClone(team(id));
+  renderTeams();
+}
+
+function draftAddPlayer() {
+  const name = document.getElementById('new-name').value.trim();
+  if (!name) return;
+  editing.players.push({ id: uid(), name, number: document.getElementById('new-num').value.trim() });
+  renderTeams();
+  document.getElementById('new-num').focus();
+}
+
+// While typing a new player's name, offer players from past seasons with a matching name. Picking one
+// links them to that person, so their all-time stats continue while this season's stats start fresh.
+function returningPlayers(query) {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2 || !db.seasonsReady) return [];
+  const here = new Set([...seasonTeams().flatMap(t => t.players), ...editing.players].map(p => p.personId || p.id));
+  const latest = {};   // personId → their most recent past-season roster entry
+  for (const p of allPlayers()) {
+    if (inActiveSeason(p.team) || here.has(p.personId)) continue;
+    if (!p.name.toLowerCase().includes(q)) continue;
+    const num = db.seasons.find(s => s.id === p.team.seasonId)?.number || 0;
+    if (!latest[p.personId] || num > latest[p.personId].num) latest[p.personId] = { ...p, num };
+  }
+  return Object.values(latest).sort((a, b) => a.name.localeCompare(b.name)).slice(0, 6);
+}
+
+function suggestPlayers(query) {
+  const box = document.getElementById('suggest');
+  const list = returningPlayers(query);
+  box.innerHTML = list.length ? `<div class="suggest">
+    <div class="muted" style="font-size:13px">Returning player? Tap to link them so their all-time stats carry on:</div>
+    ${list.map(p => `<button class="small" onclick="addReturningPlayer('${p.id}')">↺ ${esc(p.name)}
+      <span class="muted">#${esc(p.number)} · ${esc(p.team.name)} · ${esc(seasonName(p.team.seasonId))}</span></button>`).join('')}
+  </div>` : '';
+}
+
+function addReturningPlayer(pid) {
+  const p = allPlayers().find(x => x.id === pid);
+  const typedNum = document.getElementById('new-num').value.trim();
+  // Same person, new roster entry for this season. If they'd claimed their player, their account comes with them.
+  editing.players.push({ id: uid(), name: p.name, number: typedNum || p.number, personId: p.personId, userId: p.userId || null, carryUser: !!p.userId });
+  renderTeams();
+  document.getElementById('new-name').focus();
+}
+
+function draftRemovePlayer(i) {
+  const pid = editing.players[i].id;
+  const used = [...db.games, ...db.practice].some(g => g.events.some(e => e.playerId === pid || e.assistId === pid || e.targetId === pid
+    || Object.values(e.played || {}).some(ids => ids.includes(pid))));
+  if (used) return alert('This player has recorded stats, so they can’t be removed. You can still rename them.');
+  editing.players.splice(i, 1);
+  renderTeams();
+}
+
+function saveTeam() {
+  editing.name = editing.name.trim();
+  editing.players.forEach(p => { p.name = p.name.trim(); p.number = String(p.number).trim(); });
+  if (!editing.name) return alert('The team needs a name.');
+  if (editing.players.some(p => !p.name)) return alert('Every player needs a name.');
+  const i = db.teams.findIndex(t => t.id === editing.id);
+  if (i < 0) { editing = null; renderTeams(); return alert('Another admin deleted this team, so your changes weren’t saved.'); }
+  const t = editing, removed = db.teams[i].players.filter(p => !t.players.some(x => x.id === p.id)).map(p => p.id);
+  const row = teamRow(t), rows = playerRows(t);
+  db.teams[i] = t;
+  persist({ upsert: 'teams', rows: [row] }, rows.length && { upsert: 'players', rows }, removed.length && { del: 'players', vals: removed });
+  editing = null; renderTeams();
+}
+
+function cancelEdit() { editing = null; renderTeams(); }
+
+// The Delete button in the team editor.
+function deleteTeam() { deleteTeamById(editing.id); }
+
+// Delete a team and its roster. If it has games, those games (and all their plays and stats) go too,
+// since a game can't exist without both teams, so that case asks for the team's name to be typed.
+function deleteTeamById(id) {
+  const t = team(id);
+  const games = db.games.filter(g => g.homeId === id || g.awayId === id);
+  if (games.length) {
+    const played = games.filter(g => g.status !== 'scheduled').length, scheduled = games.length - played;
+    const parts = [played && `${played} played game${played === 1 ? '' : 's'}`, scheduled && `${scheduled} scheduled game${scheduled === 1 ? '' : 's'}`].filter(Boolean).join(' and ');
+    const typed = prompt(`Deleting ${t.name} also permanently deletes its ${parts}, including every stat recorded in them `
+      + `(for both teams). This can’t be undone.\n\nType the team name to confirm:`);
+    if (typed === null) return;
+    if (typed.trim().toLowerCase() !== t.name.trim().toLowerCase()) return alert('The name didn’t match, so nothing was deleted.');
+  } else if (!confirm(`Delete ${t.name} and its roster (${t.players.length} player${t.players.length === 1 ? '' : 's'})?`)) return;
+
+  const gameIds = games.map(g => g.id);
+  db.games = db.games.filter(g => !gameIds.includes(g.id));
+  db.practice = db.practice.filter(g => g.practiceTeam !== id);   // the database deletes a team's practices with it
+  db.teams = db.teams.filter(x => x.id !== id);
+  persist(gameIds.length && { del: 'games', vals: gameIds },   // plays go with their games
+    { del: 'teams', vals: [id] });                               // players go with their team
+  if (editing?.id === id) editing = null;
+  toast(`Deleted ${t.name}${gameIds.length ? ` and ${gameIds.length} game${gameIds.length === 1 ? '' : 's'}` : ''}.`);
+  renderTeams();
+}
+
+function addTeam() {
+  const n = document.getElementById('tn').value.trim();
+  if (!n) return;
+  const color2 = document.getElementById('tc2-on')?.checked ? document.getElementById('tc2').value : null;
+  const t = { id: uid(), name: n, color: document.getElementById('tc').value, color2, players: [], seasonId: activeSeason()?.id || null };
+  db.teams.push(t);
+  const row = teamRow(t);
+  persist({ upsert: 'teams', rows: [row] });
+  editing = structuredClone(t); // open the new team straight away so players can be added
+  renderTeams();
+  document.getElementById('new-name').focus();
+}
+
+function resetAll() {
+  const s = activeSeason();
+  if (!confirm(`Erase all teams, games and stats in ${s ? s.name : league.name} and replace them with sample teams? Past seasons aren’t affected.`)) return;
+  const sid = s?.id || null, fresh = seed().teams.map(t => ({ ...t, seasonId: sid }));
+  const oldGames = db.games.filter(inActiveSeason).map(g => g.id), oldTeams = db.teams.filter(inActiveSeason).map(t => t.id);
+  db.games = db.games.filter(g => !oldGames.includes(g.id));
+  db.practice = db.practice.filter(g => !oldTeams.includes(g.practiceTeam));
+  db.teams = [...db.teams.filter(t => !oldTeams.includes(t.id)), ...fresh];
+  editing = null;
+  const teams = fresh.map(teamRow), players = fresh.flatMap(playerRows);
+  persist(oldGames.length && { del: 'games', vals: oldGames },   // plays are removed with their games
+    oldTeams.length && { del: 'teams', vals: oldTeams },           // players are removed with their teams
+    { upsert: 'teams', rows: teams }, { upsert: 'players', rows: players });
+  location.hash = '#/games'; route();
+}
+
+// ---------- Sign in / sign up ----------
+const authUrl = () => location.origin + location.pathname;
+
+function renderLogin() {
+  const up = authMode === 'signup';
+  app.innerHTML = `
+    <div class="card auth">
+      <h1>${up ? 'Create an account' : 'Sign in'}</h1>
+      <form onsubmit="submitAuth(event)">
+        <input id="email" type="email" autocomplete="email" placeholder="Email" required>
+        <input id="pw" type="password" autocomplete="${up ? 'new-password' : 'current-password'}"
+          placeholder="Password${up ? ' (6+ characters)' : ''}" minlength="6" required>
+        <button class="primary" id="authBtn">${up ? 'Create account' : 'Sign in'}</button>
+      </form>
+      <div id="authMsg" class="msg"></div>
+      <div class="links">
+        <a onclick="authMode='${up ? 'signin' : 'signup'}';renderLogin()">${up ? 'Have an account? Sign in' : 'New here? Create an account'}</a>
+        ${up ? '' : '<a onclick="forgotPassword()">Forgot password?</a>'}
+      </div>
+    </div>`;
+}
+
+function authMsg(text, isError) {
+  const m = document.getElementById('authMsg');
+  m.textContent = text; m.classList.toggle('error', !!isError);
+}
+
+async function submitAuth(ev) {
+  ev.preventDefault();
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('pw').value;
+  const btn = document.getElementById('authBtn');
+  btn.disabled = true; authMsg('');
+  const { data, error } = authMode === 'signup'
+    ? await sb.auth.signUp({ email, password, options: { emailRedirectTo: authUrl() } })
+    : await sb.auth.signInWithPassword({ email, password });
+  btn.disabled = false;
+  if (error) {
+    // Never clicked (or lost) the confirmation email: offer to send a new one.
+    if (/not confirmed/i.test(error.message)) {
+      authMsg('Your email isn’t confirmed yet. Check your inbox for the link, or send a new one.', true);
+      document.getElementById('authMsg').insertAdjacentHTML('beforeend',
+        ' <button class="small" type="button" onclick="resendConfirmation()">Resend confirmation email</button>');
+      return;
+    }
+    return authMsg(error.message, true);
+  }
+  // If email confirmation is on, sign-up returns no session until the link is clicked.
+  if (authMode === 'signup' && !data.session) authMsg('Check your email for a confirmation link, then sign in.');
+}
+
+async function resendConfirmation() {
+  const email = document.getElementById('email').value.trim();
+  if (!email) return authMsg('Type your email above first.', true);
+  const { error } = await sb.auth.resend({ type: 'signup', email, options: { emailRedirectTo: authUrl() } });
+  authMsg(error ? error.message : 'Sent! Open the newest email and tap its link, then come back and sign in.', !!error);
+}
+
+async function forgotPassword() {
+  const email = document.getElementById('email').value.trim();
+  if (!email) return authMsg('Type your email above first.', true);
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: authUrl() });
+  authMsg(error ? error.message : 'If that email has an account, a reset link is on its way.', !!error);
+}
+
+function renderNewPassword() {
+  app.innerHTML = `
+    <div class="card auth">
+      <h1>Choose a new password</h1>
+      <form onsubmit="saveNewPassword(event)">
+        <input id="pw" type="password" autocomplete="new-password" placeholder="New password (6+ characters)" minlength="6" required>
+        <button class="primary">Save password</button>
+      </form>
+      <div id="authMsg" class="msg"></div>
+    </div>`;
+}
+
+async function saveNewPassword(ev) {
+  ev.preventDefault();
+  const { error } = await sb.auth.updateUser({ password: document.getElementById('pw').value });
+  if (error) return authMsg(error.message, true);
+  recovering = false; route();
+}
+
+async function signOut() {
+  const waiting = writes.length
+    ? `\n\n${writes.length} change${writes.length === 1 ? ' hasn’t' : 's haven’t'} been sent yet. ${writes.length === 1 ? 'It stays' : 'They stay'} on this device and will be sent next time you sign in here.` : '';
+  if (confirm(`Sign out on this device?${waiting}`)) await sb.auth.signOut();
+}
+
+function renderSetup() {
+  app.innerHTML = `
+    <div class="card auth">
+      <h1>Almost ready</h1>
+      <p>Sign-in needs a Supabase project. Open <code>index.html</code> and fill in
+      <code>SUPABASE_URL</code> and <code>SUPABASE_KEY</code> near the top of the script.</p>
+      ${window.supabase ? '' : '<p class="msg error">The Supabase library didn’t load — check your internet connection.</p>'}
+    </div>`;
+}
+
+if (sb) {
+  // Fires once on load with any saved session, then on every sign in / sign out.
+  // Installable app: keep the app's files for offline use (needs https, or localhost for testing).
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  let restoredFor = null;
+  sb.auth.onAuthStateChange((event, s) => {
+    // Supabase also fires this for routine things (refreshing the login, returning to the tab). Only redraw
+    // when who's signed in actually changes, so an open pop-up (e.g. picking who caught a goal) isn't closed.
+    const changed = !authReady || (s?.user.id || null) !== (session?.user.id || null) || event === 'PASSWORD_RECOVERY';
+    session = s; authReady = true;
+    if (event === 'PASSWORD_RECOVERY') recovering = true;
+    // Unsent changes stay saved on the device (under that account) when signing out.
+    if (event === 'SIGNED_OUT') { writes = []; restoredFor = null; leaveLeague(); location.hash = '#/'; }
+    if (!changed) return;
+    setTimeout(() => {   // don't call Supabase from inside this callback
+      if (s && restoredFor !== s.user.id) { restoredFor = s.user.id; restoreQueue(); }
+      route();
+    });
+  });
+}
+route();
+</script>
+</body>
+</html>
