@@ -112,7 +112,7 @@ function matchClockHtml(g, st) {
     return `<div class="clock">⏱ <b data-match-clock="${st.kickoffAt}" data-base="${base}" data-len="${st.len}"></b>
       · ${st.period === 1 ? '1st' : '2nd'} half</div>`;
   }
-  return `<div class="clock">${st.phase === 'break' ? 'Half time' : st.phase === 'done' ? 'Full time' : 'Not kicked off yet'}</div>`;
+  return `<div class="clock">${st.phase === 'break' ? `⏸ Half time · paused at ${st.len}:00` : st.phase === 'done' ? 'Full time' : 'Not kicked off yet'}</div>`;
 }
 const mmss = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 function tickClocks() {
@@ -146,8 +146,8 @@ function renderTracker(g) {
   if (st.phase === 'pre' || st.phase === 'break') {
     const second = st.phase === 'break';
     panel = `<div class="card phase">
-      <div class="phase-head">${second ? `Half time · ${score(g, h.id)}–${score(g, a.id)}` : 'Before kickoff'}</div>
-      <div class="muted">${second ? 'Make any half-time changes in the lineup, then start the second half.'
+      <div class="phase-head">${second ? `⏸ Half time · ${score(g, h.id)}–${score(g, a.id)}` : 'Before kickoff'}</div>
+      <div class="muted">${second ? 'The match clock and minutes played are paused. Make any half-time changes in the lineup, then start the second half to resume.'
         : `Pick each team’s starting ${onFieldMax()} and goalkeeper. Lineups are used for minutes played, appearances and goalkeeper stats.`}</div>
       ${lineupBar}
       <button class="primary" style="width:100%;margin-top:6px" onclick="kickOff()">⚽ ${second ? 'Start the 2nd half' : 'Kick off'}</button>
@@ -190,14 +190,16 @@ function renderTracker(g) {
       </div>
       <div class="team"><span class="dot" style="background:${teamBg(a)}"></span>${esc(a.name)}</div>
     </div>
+    ${st.phase === 'play' ? `<div class="row clock-controls">
+      ${st.period === 1 ? '<button onclick="halfTime()">⏸ Half time</button>' : ''}
+      <button onclick="fullTime()">🏁 Full time</button></div>` : ''}
     ${panel}
     <h2>Recent plays</h2>
     <div class="card">${playLog(g, 8, 'Plays will show up here.')}</div>
     <div class="row">
       <button onclick="undo()" ${g.events.length ? '' : 'disabled'}>↶ Undo</button>
       <a class="btn" href="#/box/${g.id}">Box score</a>
-      ${st.phase === 'play' && st.period === 1 ? '<button onclick="halfTime()">Half time</button>' : ''}
-      ${st.phase === 'play' || st.phase === 'break' ? '<button class="primary" onclick="fullTime()">Full time</button>' : ''}
+      ${st.phase === 'break' ? '<button onclick="fullTime()">🏁 End at half time</button>' : ''}
     </div>
     ${isPractice(g) && st.phase !== 'play' ? '<div class="row" style="margin-top:10px"><button onclick="editSides()">⇄ Sides</button></div>' : ''}`;
   tickClocks();
