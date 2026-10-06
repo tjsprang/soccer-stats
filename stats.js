@@ -237,9 +237,33 @@ function colPath(x, y, w, h) {
   return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
 }
 
+// Legend items are [cssClass, text] or [cssClass, text, colour] (a team colour overrides the class's colour).
 function legend(items) {
-  return `<div class="legend">${items.map(([cls, text]) =>
-    `<span><i class="swatch ${cls}"></i>${esc(text)}</span>`).join('')}</div>`;
+  return `<div class="legend">${items.map(([cls, text, color]) =>
+    `<span><i class="swatch ${cls}" ${color ? `style="background:${color}"` : ''}></i>${esc(text)}</span>`).join('')}</div>`;
+}
+
+// ---------- Team colours in charts ----------
+// Charts draw each team in its own colour, so they match the team's dot. A colour that wouldn't show on the card
+// (a white kit in light mode, a black kit in dark mode) uses the team's second colour, or the page's text colour if it has none.
+const hexRgb = c => (/^#[0-9a-f]{6}$/i.test(c || '') ? [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)) : null);
+const luminance = rgb => { const [r, g, b] = rgb.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+const darkMode = () => matchMedia('(prefers-color-scheme: dark)').matches;
+function visibleOnCard(c) {
+  const rgb = hexRgb(c);
+  if (!rgb) return !!c;   // CSS variables (practice sides) are already chosen to show
+  const L = luminance(rgb), bg = darkMode() ? luminance([26, 29, 36]) : 1;
+  return (Math.max(L, bg) + 0.05) / (Math.min(L, bg) + 0.05) >= 1.6;
+}
+const teamInk = (t, fallback) => [t?.color, t?.color2].find(visibleOnCard) || fallback;
+// Both teams of a match. If their colours are too alike to tell apart, the away team switches to its second colour
+// (or a stand-in).
+function teamInks(h, a) {
+  const home = teamInk(h, 'var(--text)');
+  let away = teamInk(a, 'var(--text)');
+  const close = (x, y) => { const p = hexRgb(x), q = hexRgb(y); return x === y || (p && q && Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) < 90); };
+  if (close(home, away)) away = [a?.color2, a?.color].find(c => visibleOnCard(c) && !close(home, c)) || (close(home, 'var(--series-2)') ? 'var(--series-1)' : 'var(--series-2)');
+  return [home, away];
 }
 
 function tableTwin(head, rows) {
@@ -263,7 +287,7 @@ function scoreChart(r) {
   const x = m => pad.l + (W - pad.l - pad.r) * (m / maxX);
   const y = v => pad.t + (H - pad.t - pad.b) * (1 - v / maxY);
   const step = niceStep(maxY);
-  const series = [[h, 0, 'series-1'], [a, 1, 'series-2']];
+  const ink = teamInks(h, a), series = [[h, 0, ink[0]], [a, 1, ink[1]]];   // [team, score index, colour]
   const end = g.status === 'final' ? maxX : Math.min(maxX, Math.max(goals.at(-1).min.n, minuteAt(r.periods, Date.now()).n));
   const lineOf = idx => {
     let v = 0;
@@ -278,7 +302,7 @@ function scoreChart(r) {
   const tip = gl => `${gl.min.label} ${team(gl.team).name}: ${goalText(gl)}${gl.assistId ? `, assisted by ${player(gl.assistId).name}` : ''}\n${h.name} ${gl.score[0]} – ${gl.score[1]} ${a.name}`;
   return `<div class="card chart">
     <div class="chart-title">Score by minute</div>
-    ${legend([['series-1', `${h.name} ${last[0]}`], ['series-2', `${a.name} ${last[1]}`]])}
+    ${legend([['', `${h.name} ${last[0]}`, ink[0]], ['', `${a.name} ${last[1]}`, ink[1]]])}
     <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Score by minute: ${attr(h.name)} ${last[0]}, ${attr(a.name)} ${last[1]}">
       ${Array.from({ length: maxY / step + 1 }, (_, i) => i * step).map(v => `
         <line class="grid" x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}"/>
@@ -286,9 +310,9 @@ function scoreChart(r) {
       ${ticks.map(m => `<text class="tick" x="${x(m)}" y="${H - pad.b + 16}" text-anchor="middle">${m}'</text>`).join('')}
       ${r.periods.length > 1 ? `<line class="axis" x1="${x(r.periods[0].len)}" x2="${x(r.periods[0].len)}" y1="${pad.t}" y2="${H - pad.b}"/>
         <text class="tick" x="${x(r.periods[0].len) + 4}" y="${pad.t + 10}">HT</text>` : ''}
-      ${series.map(([, idx, cls]) => `<polyline class="line ${cls}" points="${lineOf(idx)}"/>`).join('')}
+      ${series.map(([, idx, color]) => `<polyline class="line" style="stroke:${color}" points="${lineOf(idx)}"/>`).join('')}
       ${goals.map(gl => { const idx = gl.team === g.homeId ? 0 : 1;
-        return `<circle class="dot ${series[idx][2]}" cx="${x(gl.min.n)}" cy="${y(gl.score[idx])}" r="4"/>
+        return `<circle class="dot" style="fill:${series[idx][2]}" cx="${x(gl.min.n)}" cy="${y(gl.score[idx])}" r="4"/>
           <circle class="hit" tabindex="0" cx="${x(gl.min.n)}" cy="${y(gl.score[idx])}" r="12" data-tip="${attr(tip(gl))}"/>`; }).join('')}
       ${labelEnds ? series.map(([, idx], k) => `<text class="end-label" x="${x(end) + 8}" y="${endY[k] + 4}">${last[idx]}</text>`).join('') : ''}
     </svg>
@@ -301,6 +325,7 @@ function goalTimesChart(results, tid) {
   const goals = results.flatMap(r => r.goals.map(gl => ({ ...gl, full: matchLength(r) })));
   if (!goals.length) return '';
   const slice = gl => Math.min(5, Math.max(0, Math.floor(((gl.min.n - 0.01) / gl.full) * 6)));
+  const inkUs = teamInk(team(tid), 'var(--text)'), inkThem = 'color-mix(in srgb, var(--ink-muted) 45%, transparent)';
   const len = halfLen() * 2;
   const rows = Array.from({ length: 6 }, (_, i) => ({ label: `${Math.round((len * i) / 6) + (i ? 1 : 0)}–${Math.round((len * (i + 1)) / 6)}'`,
     us: goals.filter(gl => gl.team === tid && slice(gl) === i).length, them: goals.filter(gl => gl.team !== tid && slice(gl) === i).length }));
@@ -311,15 +336,15 @@ function goalTimesChart(results, tid) {
   const base = y(0);
   return `<div class="card chart">
     <div class="chart-title">When goals come</div>
-    ${legend([['series-1', 'Scored'], ['series-2', 'Conceded']])}
+    ${legend([['', 'Scored', inkUs], ['', 'Conceded', inkThem]])}
     <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Goals scored and conceded by time in the match">
       ${Array.from({ length: maxY / step + 1 }, (_, i) => i * step).map(v => `
         <line class="${v ? 'grid' : 'axis'}" x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}"/>
         <text class="tick" x="${pad.l - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join('')}
       ${rows.map((r, i) => {
         const cx = pad.l + band * i + band / 2;
-        return [[r.us, 'series-1', cx - bw - 1, `${r.label}: ${r.us} scored`], [r.them, 'series-2', cx + 1, `${r.label}: ${r.them} conceded`]]
-          .map(([v, cls, bx, t]) => `<path class="bar ${cls}" d="${colPath(bx, y(v), bw, base - y(v))}"/>
+        return [[r.us, inkUs, cx - bw - 1, `${r.label}: ${r.us} scored`], [r.them, inkThem, cx + 1, `${r.label}: ${r.them} conceded`]]
+          .map(([v, color, bx, t]) => `<path class="bar" style="fill:${color}" d="${colPath(bx, y(v), bw, base - y(v))}"/>
             <rect class="hit" tabindex="0" x="${bx - 2}" y="${pad.t}" width="${bw + 4}" height="${base - pad.t}" data-tip="${attr(t)}"/>`).join('')
           + `<text class="tick" x="${cx}" y="${base + 16}" text-anchor="middle">${r.label}</text>`;
       }).join('')}
@@ -331,12 +356,13 @@ function goalTimesChart(results, tid) {
 
 // Two teams side by side, one row per stat (box scores).
 function compareBars(h, a, rows) {
+  const ink = teamInks(h, a);
   return `<div class="card"><div class="chart-title">Match stats</div>
     <div class="compare-head"><span><span class="dot" style="background:${teamBg(h)}"></span>${esc(h.name)}</span>
       <span>${esc(a.name)} <span class="dot" style="background:${teamBg(a)};margin:0 0 0 4px"></span></span></div>
     ${rows.map(([label, x, y]) => { const t = x + y || 1;
       return `<div class="compare-row"><b>${x}</b><span class="compare-label">${esc(label)}</span><b>${y}</b>
-        <span class="compare-track"><i class="s1" style="width:${(x / t) * 100}%"></i><i class="s2" style="width:${(y / t) * 100}%"></i></span></div>`; }).join('')}
+        <span class="compare-track"><i style="width:${(x / t) * 100}%;background:${ink[0]}"></i><i style="width:${(y / t) * 100}%;background:${ink[1]}"></i></span></div>`; }).join('')}
   </div>`;
 }
 
