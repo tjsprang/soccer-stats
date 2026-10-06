@@ -211,19 +211,33 @@ function play(type, fields = {}) {
   return e;
 }
 
-function kickOff() {
+// A yes/no question in the app's own pop-up. (Browser confirm() boxes can be blocked or silently cancelled,
+// for example in an installed app or an embedded browser, which would leave the button doing nothing.)
+let sheetYes = null;
+function askSheet(title, text, yesLabel, onYes) {
+  sheetYes = onYes;
+  openSheet(`
+    <h3>${title}</h3>
+    ${text ? `<p class="muted" style="margin-top:0">${text}</p>` : ''}
+    <div class="actions">
+      <button onclick="closeSheet()">Cancel</button>
+      <button class="goal" onclick="const yes = sheetYes; sheetYes = null; closeSheet(); yes()">${yesLabel}</button>
+    </div>`);
+}
+
+function kickOff(sure = false) {
   const g = game(ui.gameId), st = matchState(g), tids = [g.homeId, g.awayId];
-  if (st.period === 0 && !tids.some(tid => st.on[tid]) &&
-    !confirm('No lineups are set. You can still record goals, shots and cards, but not minutes played, subs or goalkeeper stats. Kick off anyway?')) return;
+  if (!sure && st.period === 0 && !tids.some(tid => st.on[tid])) return askSheet('Kick off without lineups?',
+    'You can still record goals, shots and cards, but not minutes played, subs or goalkeeper stats.', '⚽ Kick off', () => kickOff(true));
   const played = {}, gk = {};
   for (const tid of tids) { if (st.on[tid]) played[tid] = st.on[tid]; if (st.gk[tid]) gk[tid] = st.gk[tid]; }
   play('kickoff', { played, detail: { period: st.period + 1, len: halfLen(), gk } });
   route();
 }
 
-function halfTime() {
+function halfTime(sure = false) {
   const g = game(ui.gameId);
-  if (!confirm(`Half time at ${score(g, g.homeId)}–${score(g, g.awayId)}?`)) return;
+  if (!sure) return askSheet(`Half time at ${score(g, g.homeId)}–${score(g, g.awayId)}?`, '', 'Half time', () => halfTime(true));
   play('half');
   // The second half starts with whoever finished the first (changes can be made in the lineup).
   const st = matchState({ ...g, lineup: null });
@@ -231,18 +245,18 @@ function halfTime() {
   saveGame(g); route();
 }
 
-function fullTime() {
+function fullTime(sure = false) {
   const g = game(ui.gameId);
-  if (!confirm(`Full time at ${score(g, g.homeId)}–${score(g, g.awayId)}?`)) return;
+  if (!sure) return askSheet(`Full time at ${score(g, g.homeId)}–${score(g, g.awayId)}?`, 'This ends the match.', 'Full time', () => fullTime(true));
   play('full');
   if (isPlayoff(g) && score(g, g.homeId) === score(g, g.awayId)) return shootoutSheet();   // a playoff needs a winner
   finishGame();
 }
 
-function finishGame() {
+function finishGame(sure = false) {
   const g = game(ui.gameId);
-  if (isPlayoff(g) && score(g, g.homeId) === score(g, g.awayId) && !shootoutOf(g)
-    && !confirm('This playoff match is tied with no shootout, so nobody can advance. Finish it anyway?')) return;
+  if (!sure && isPlayoff(g) && score(g, g.homeId) === score(g, g.awayId) && !shootoutOf(g))
+    return askSheet('Finish without a shootout?', 'This playoff match is level, so nobody can advance until a shootout is recorded.', 'Finish anyway', () => finishGame(true));
   if (!g.events.some(e => e.type === 'full')) play('full');
   g.status = 'final'; saveGame(g);
   if (isPlayoff(g)) advanceBracket();   // the winner moves on
